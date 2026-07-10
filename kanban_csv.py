@@ -125,9 +125,21 @@ class KanbanCSVApp(ctk.CTk):
         elif key == 'c' or event.keycode == 67 or getattr(event, 'keysym_num', 0) == 241:
             self.global_copy(None)
             return "break"
+        elif key == 'x' or event.keycode == 88 or getattr(event, 'keysym_num', 0) == 231:
+            self.global_cut(w)
+            return "break"
         elif key == 'a' or event.keycode == 65 or getattr(event, 'keysym_num', 0) == 245:
             self.global_select_all(None)
             return "break"
+
+    def global_cut(self, widget):
+        self.global_copy(None)
+        try:
+            if isinstance(widget, tk.Text) or 'text' in str(type(widget)).lower():
+                widget.delete("sel.first", "sel.last")
+            else:
+                widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
+        except: pass
 
     def global_paste(self, event):
         w = self.get_target_text_widget()
@@ -138,11 +150,10 @@ class KanbanCSVApp(ctk.CTk):
                     if isinstance(w, tk.Text) or 'text' in str(type(w)).lower():
                         w.insert(tk.INSERT, text)
                     else:
-                        w.delete(tk.SEL_FIRST, tk.SEL_LAST)
+                        try: w.delete(tk.SEL_FIRST, tk.SEL_LAST)
+                        except: pass
                         w.insert(tk.INSERT, text)
-            except:
-                try: w.insert(tk.INSERT, text)
-                except: pass
+            except: pass
 
     def global_copy(self, event):
         w = self.get_target_text_widget()
@@ -168,17 +179,7 @@ class KanbanCSVApp(ctk.CTk):
 
     def show_context_menu(self, event, widget):
         menu = tk.Menu(self, tearoff=0, bg=BG_PANEL, fg=FG_TEXT, selectcolor="#007acc")
-        
-        def do_cut():
-            self.global_copy(None)
-            try:
-                if isinstance(widget, tk.Text) or 'text' in str(type(widget)).lower():
-                    widget.delete("sel.first", "sel.last")
-                else:
-                    widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
-            except: pass
-                
-        menu.add_command(label="Вырезать", command=do_cut)
+        menu.add_command(label="Вырезать", command=lambda: self.global_cut(widget))
         menu.add_command(label="Копировать", command=lambda: self.global_copy(None))
         menu.add_command(label="Вставить", command=lambda: self.global_paste(None))
         menu.add_separator()
@@ -337,6 +338,12 @@ class KanbanCSVApp(ctk.CTk):
         
         ctk.CTkLabel(self.right_editor_frame, text="Запись", font=FONT_TITLE).pack(pady=10)
         
+        bf = ctk.CTkFrame(self.right_editor_frame, fg_color=BG_PANEL)
+        bf.pack(fill="x", side="bottom", pady=15, padx=15)
+        
+        ctk.CTkButton(bf, text="Отмена", command=self.show_editor_placeholder, width=140, height=40, font=FONT_MAIN).pack(side="right", padx=5)
+        ctk.CTkButton(bf, text="Сохранить", command=lambda: self.save_edit(is_new), fg_color="#007acc", width=140, height=40, font=FONT_TEXT_BOLD).pack(side="right", padx=5)
+
         editor_canvas = tk.Canvas(self.right_editor_frame, bg=BG_PANEL, highlightthickness=0)
         ed_scroll = AutoHideScrollbar(self.right_editor_frame, orientation="vertical", command=editor_canvas.yview)
         editor_canvas.configure(yscrollcommand=ed_scroll.set)
@@ -373,11 +380,6 @@ class KanbanCSVApp(ctk.CTk):
             w.pack(fill="x", pady=2)
             self.editor_widgets[h] = w
             target_w.bind("<Button-3>", lambda event, tw=target_w: self.show_context_menu(event, tw))
-
-        bf = ctk.CTkFrame(self.right_editor_frame, fg_color=BG_PANEL, height=60)
-        bf.pack(fill="x", side="bottom", pady=10)
-        ctk.CTkButton(bf, text="Отмена", command=self.show_editor_placeholder, width=120).pack(side="right", padx=10)
-        ctk.CTkButton(bf, text="Сохранить", command=lambda: self.save_edit(is_new), fg_color="#007acc", width=120).pack(side="right")
 
     def save_edit(self, is_new):
         d = self.tabs_data[self.active_tab]; res = {}

@@ -43,7 +43,7 @@ class EditCardDialog(tk.Toplevel):
         )
         title_lbl.pack(side="left", padx=15)
 
-        # ДОБАВЛЕНО: Кнопка закрытия (крестик) для окна редактирования
+        # Кнопка закрытия (крестик) для окна редактирования
         close_btn = tk.Button(self.dialog_title_bar, text="✕", bg=BG_PANEL, fg=FG_TEXT, bd=0, font=("Arial", 14), width=5,
                               activebackground=CLOSE_HOVER, activeforeground="white", command=self.destroy)
         close_btn.pack(side="right", fill="y")
@@ -71,8 +71,12 @@ class EditCardDialog(tk.Toplevel):
         canvas.pack(side="left", fill="both", expand=True, padx=15, pady=15)
         scrollbar.pack(side="right", fill="y")
 
-        # ИСПРАВЛЕНО: Скролл привязывается строго к Canvas
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
+        # ИСПРАВЛЕНО: Безопасный локальный скролл только при наведении на Canvas
+        def _on_dialog_wheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        
+        canvas.bind("<Enter>", lambda e: self.bind_all("<MouseWheel>", _on_dialog_wheel))
+        canvas.bind("<Leave>", lambda e: self.unbind_all("<MouseWheel>"))
 
         self.entries = {}
         for header in self.headers:
@@ -132,9 +136,8 @@ class EditCardDialog(tk.Toplevel):
         self.result = {h: self.entries[h].get() for h in self.headers}
         self.destroy()
 
-    # Уничтожаем глобальный бинд колесика мыши при закрытии диалога, чтобы вернуть управление главной доске
     def destroy(self):
-        self.unbind_all("<MouseWheel>")
+        self.unbind_all("<MouseWheel>") # Гарантированно очищаем бинды
         super().destroy()
 
 
@@ -270,10 +273,12 @@ class KanbanCSVApp(tk.Tk):
         self.main_container = tk.Frame(self, bg=BG_MAIN)
         self.main_container.pack(fill="both", expand=True, padx=12, pady=12)
 
+        # Локальные шорткаты
         self.bind_all("<Control-o>", lambda e: self.open_file())
         self.bind_all("<Control-s>", lambda e: self.save_file())
 
     def open_file(self):
+        # Теперь диалог открытия отрабатывает штатно, так как глобальный скролл больше его не перехватывает
         file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")])
         if not file_path:
             return
@@ -323,7 +328,7 @@ class KanbanCSVApp(tk.Tk):
         win.title("Выбор колонки")
         win.geometry("450x220")
         win.configure(bg=BG_MAIN)
-        win.overrideredirect(True) # Делаем окно выбора колонки тоже Borderless
+        win.overrideredirect(True) 
         win.transient(self)
         win.grab_set()
 
@@ -393,9 +398,11 @@ class KanbanCSVApp(tk.Tk):
             canvas.bind("<Configure>", _configure_canvas)
             cards_frame.bind("<Configure>", lambda e, c=canvas: c.configure(scrollregion=c.bbox("all")))
 
-            def _on_mousewheel(event, c=canvas):
-                c.yview_scroll(int(-1 * (event.delta / 120)), "units")
-            canvas.bind("<Enter>", lambda e, c=canvas: self.bind_all("<MouseWheel>", _on_mousewheel))
+            # ИСПРАВЛЕНО: Безопасный локальный скролл для колонок доски
+            def _make_wheel_handler(target_canvas):
+                return lambda event: target_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+            canvas.bind("<Enter>", lambda e, c=canvas: self.bind_all("<MouseWheel>", _make_wheel_handler(c)))
             canvas.bind("<Leave>", lambda e: self.unbind_all("<MouseWheel>"))
 
             has_cards = False

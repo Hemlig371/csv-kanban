@@ -19,44 +19,16 @@ class EditCardDialog(tk.Toplevel):
     def __init__(self, parent, row_data, headers, is_new=False):
         super().__init__(parent)
         self.title("Новая запись" if is_new else "Редактирование записи")
-        
-        self.geometry("675x750")
         self.configure(bg=BG_MAIN)
         
-        self.overrideredirect(True)
+        # Корректное модальное поведение в Windows
         self.transient(parent)
         self.grab_set()
 
         self.headers = headers
         self.result = None
-        self._drag_data = {"x": 0, "y": 0}
 
-        # Кастомный заголовок для диалогового окна
-        self.dialog_title_bar = tk.Frame(self, bg=BG_PANEL, height=48)
-        self.dialog_title_bar.pack(fill="x", side="top")
-        self.dialog_title_bar.pack_propagate(False)
-
-        title_lbl = tk.Label(
-            self.dialog_title_bar, 
-            text=" 📝 Новая запись" if is_new else " 📝 Редактирование записи", 
-            fg=FG_TEXT, bg=BG_PANEL, font=("Arial", 14, "bold")
-        )
-        title_lbl.pack(side="left", padx=15)
-
-        # Кнопка закрытия (крестик) для окна редактирования
-        close_btn = tk.Button(self.dialog_title_bar, text="✕", bg=BG_PANEL, fg=FG_TEXT, bd=0, font=("Arial", 14), width=5,
-                              activebackground=CLOSE_HOVER, activeforeground="white", command=self.destroy)
-        close_btn.pack(side="right", fill="y")
-        close_btn.bind("<Enter>", lambda e: close_btn.config(bg=CLOSE_HOVER))
-        close_btn.bind("<Leave>", lambda e: close_btn.config(bg=BG_PANEL))
-
-        # Перетаскивание диалога
-        self.dialog_title_bar.bind("<Button-1>", self.start_drag)
-        self.dialog_title_bar.bind("<B1-Motion>", self.do_drag)
-        title_lbl.bind("<Button-1>", self.start_drag)
-        title_lbl.bind("<B1-Motion>", self.do_drag)
-
-        # Основной контент
+        # Контейнер со скроллом
         canvas = tk.Canvas(self, borderwidth=0, highlightthickness=0, bg=BG_MAIN)
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
         self.scrollable_frame = tk.Frame(canvas, bg=BG_MAIN)
@@ -71,12 +43,12 @@ class EditCardDialog(tk.Toplevel):
         canvas.pack(side="left", fill="both", expand=True, padx=15, pady=15)
         scrollbar.pack(side="right", fill="y")
 
-        # Безопасный локальный скролл только при наведении на Canvas
+        # Чистый локальный скролл без bind_all
         def _on_dialog_wheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
         
-        canvas.bind("<Enter>", lambda e: self.bind_all("<MouseWheel>", _on_dialog_wheel))
-        canvas.bind("<Leave>", lambda e: self.unbind_all("<MouseWheel>"))
+        canvas.bind("<MouseWheel>", _on_dialog_wheel)
+        self.scrollable_frame.bind("<MouseWheel>", _on_dialog_wheel)
 
         self.entries = {}
         for header in self.headers:
@@ -102,7 +74,10 @@ class EditCardDialog(tk.Toplevel):
             entry.pack(fill="x", pady=6, ipady=6)
             self.entries[header] = entry
 
-        # Нижняя панель с кнопками
+            # Пробрасываем скролл с инпутов на Canvas
+            entry.bind("<MouseWheel>", _on_dialog_wheel)
+
+        # Панель управления (кнопки)
         btn_frame = tk.Frame(self, bg=BG_PANEL)
         btn_frame.pack(fill="x", side="bottom", ipady=15)
 
@@ -118,27 +93,23 @@ class EditCardDialog(tk.Toplevel):
         )
         save_btn.pack(side="right", padx=10)
 
+        self.initial_geometry(parent)
+
+    def initial_geometry(self, parent):
         self.update_idletasks()
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.winfo_width() // 2)
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.winfo_height() // 2)
-        self.geometry(f"+{x}+{y}")
-
-    def start_drag(self, event):
-        self._drag_data["x"] = event.x
-        self._drag_data["y"] = event.y
-
-    def do_drag(self, event):
-        x = self.winfo_x() - self._drag_data["x"] + event.x
-        y = self.winfo_y() - self._drag_data["y"] + event.y
-        self.geometry(f"+{x}+{y}")
+        width, height = 675, 750
+        p_x = parent.winfo_x()
+        p_y = parent.winfo_y()
+        p_w = parent.winfo_width()
+        p_h = parent.winfo_height()
+        
+        x = p_x + (p_w // 2) - (width // 2)
+        y = p_y + (p_h // 2) - (height // 2)
+        self.geometry(f"{width}x{height}+{max(0, x)}+{max(0, y)}")
 
     def save(self):
         self.result = {h: self.entries[h].get() for h in self.headers}
         self.destroy()
-
-    def destroy(self):
-        self.unbind_all("<MouseWheel>")
-        super().destroy()
 
 
 class KanbanCSVApp(tk.Tk):
@@ -146,10 +117,10 @@ class KanbanCSVApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("CSV Kanban Editor")
-        self.geometry("1600x950")
-        self.configure(bg=BG_MAIN)
-
+        
+        # Убираем системные рамки главного окна
         self.overrideredirect(True)
+        self.configure(bg=BG_MAIN)
 
         self.file_path = None
         self.headers = []
@@ -158,12 +129,21 @@ class KanbanCSVApp(tk.Tk):
         self.kanban_column = None
         
         self._is_maximized = False
-        self._old_geometry = "1600x950+100+100"
         self._drag_data = {"x": 0, "y": 0}
 
         self.setup_styles()
         self.init_custom_title_bar()
         self.init_main_ui()
+
+        # Центрирование при запуске по центру экрана
+        self.update_idletasks()
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width, height = 1600, 950
+        x = (screen_w // 2) - (width // 2)
+        y = (screen_h // 2) - (height // 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        self._old_geometry = f"{width}x{height}+{x}+{y}"
 
     def setup_styles(self):
         style = ttk.Style()
@@ -324,17 +304,13 @@ class KanbanCSVApp(tk.Tk):
     def choose_kanban_column(self):
         win = tk.Toplevel(self)
         win.title("Выбор колонки")
-        win.geometry("450x220")
         win.configure(bg=BG_MAIN)
-        
-        # ИСПРАВЛЕНО: Убрали overrideredirect для окна выбора колонки доски,
-        # чтобы оно гарантированно рендерилось поверх и не крашило фокус в Windows.
         win.transient(self)
         win.grab_set()
 
-        tk.Label(win, text="Выберите колонку для распределения:", bg=BG_MAIN, fg=FG_TEXT, font=("Arial", 14)).pack(pady=20)
-        combo = ttk.Combobox(win, values=self.headers, state="readonly")
-        combo.pack(padx=30, pady=5, fill="x")
+        tk.Label(win, text="Выберите колонку для распределения:", bg=BG_MAIN, fg=FG_TEXT, font=("Arial", 14)).pack(pady=20, padx=30)
+        combo = ttk.Combobox(win, values=self.headers, state="readonly", font=("Arial", 12))
+        combo.pack(padx=40, pady=5, fill="x")
         
         if self.kanban_column in self.headers:
             combo.set(self.kanban_column)
@@ -349,9 +325,10 @@ class KanbanCSVApp(tk.Tk):
         tk.Button(win, text="Построить доску", command=confirm, bg=ACCENT_COLOR, fg="white", relief="flat", bd=0, padx=22, pady=8, font=("Arial", 14, "bold")).pack(pady=20)
         
         win.update_idletasks()
-        x = self.winfo_x() + (self.winfo_width() // 2) - (win.winfo_width() // 2)
-        y = self.winfo_y() + (self.winfo_height() // 2) - (win.winfo_height() // 2)
-        win.geometry(f"+{x}+{y}")
+        w, h = 450, 220
+        x = self.winfo_x() + (self.winfo_width() // 2) - (w // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (h // 2)
+        win.geometry(f"{w}x{h}+{max(0, x)}+{max(0, y)}")
 
     def build_board(self):
         for child in self.main_container.winfo_children():
@@ -391,24 +368,25 @@ class KanbanCSVApp(tk.Tk):
             cards_frame = tk.Frame(canvas, bg=BG_PANEL)
             canvas.create_window((0, 0), window=cards_frame, anchor="nw")
 
-            def _configure_canvas(e, c=canvas, f=cards_frame):
+            def _config_canvas(e, c=canvas, f=cards_frame):
                 c.configure(scrollregion=c.bbox("all"))
                 c.itemconfigure(1, width=e.width)
 
-            canvas.bind("<Configure>", _configure_canvas)
+            canvas.bind("<Configure>", _config_canvas)
             cards_frame.bind("<Configure>", lambda e, c=canvas: c.configure(scrollregion=c.bbox("all")))
 
-            def _make_wheel_handler(target_canvas):
-                return lambda event: target_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            # ИСПРАВЛЕНО: Безопасный точечный скролл без утечек ресурсов через нативный bind виджета
+            def _on_column_wheel(event, cv=canvas):
+                cv.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-            canvas.bind("<Enter>", lambda e, c=canvas: self.bind_all("<MouseWheel>", _make_wheel_handler(c)))
-            canvas.bind("<Leave>", lambda e: self.unbind_all("<MouseWheel>"))
+            canvas.bind("<MouseWheel>", _on_column_wheel)
+            cards_frame.bind("<MouseWheel>", _on_column_wheel)
 
             has_cards = False
             for row_dict in self.data:
                 val = str(row_dict.get(self.kanban_column, "")).strip()
                 if val == col_value:
-                    self.create_card(cards_frame, row_dict)
+                    self.create_card(cards_frame, row_dict, _on_column_wheel)
                     has_cards = True
             
             if not has_cards:
@@ -417,7 +395,7 @@ class KanbanCSVApp(tk.Tk):
 
         self.update_idletasks()
 
-    def create_card(self, parent, row_dict):
+    def create_card(self, parent, row_dict, wheel_handler):
         card = tk.Frame(parent, bg=BG_CARD, bd=1, relief="solid", cursor="hand2", highlightbackground=BORDER_COLOR)
         card.pack(fill="x", padx=8, pady=8, anchor="n")
 
@@ -434,6 +412,10 @@ class KanbanCSVApp(tk.Tk):
         lbl.pack(fill="both", expand=True)
 
         card.bind("<Configure>", lambda e, l=lbl: l.config(wraplength=max(150, e.width - 25)))
+
+        # Пробрасываем событие скролла на саму карточку и лейбл, чтобы доска крутилась плавно
+        card.bind("<MouseWheel>", wheel_handler)
+        lbl.bind("<MouseWheel>", wheel_handler)
 
         def on_double_click(event, r=row_dict):
             self.edit_row(r)
@@ -475,7 +457,7 @@ class KanbanCSVApp(tk.Tk):
                 writer.writerows(self.data)
             messagebox.showinfo("Успех", "Данные успешно сохранены!")
         except Exception as e:
-            messagebox.showerror("Ошибка сохранения", f"Не удалось сохранить файл:\n{str(e)}")
+            messagebox.showerror("Ошибка保存", f"Не удалось сохранить файл:\n{str(e)}")
 
 
 if __name__ == "__main__":

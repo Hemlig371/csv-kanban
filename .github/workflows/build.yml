@@ -1,7 +1,7 @@
 name: Build EXE
 
 on:
-  workflow_dispatch: # Позволяет запускать сборку вручную одной кнопкой
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,7 +14,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11' # Убрали строку cache: 'pip'
+        python-version: '3.11'
 
     - name: Install dependencies
       run: |
@@ -23,7 +23,7 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --noconsole --onefile --collect-all customtkinter kanban_csv.py
+        pyinstaller --noconfirm --onedir --windowed --icon="icon.ico" "kanban_csv.py"
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4

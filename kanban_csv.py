@@ -21,7 +21,9 @@ class EditCardDialog(tk.Toplevel):
         super().__init__(parent)
         self.title("Новая запись" if is_new else "Редактирование записи")
         self.configure(bg=BG_MAIN)
-        self.resizable(False, False)
+        
+        # РАЗРЕШЕНО РАСТЯГИВАНИЕ ОКНА
+        self.resizable(True, True)
         
         self.transient(parent)
         self.grab_set()
@@ -30,43 +32,47 @@ class EditCardDialog(tk.Toplevel):
         self.text_column = text_column
         self.result = None
 
-        # Панель действий (увеличена на 25%)
+        # Нижняя панель действий (зафиксирована снизу)
         btn_frame = tk.Frame(self, bg=BG_PANEL)
         btn_frame.pack(fill="x", side="bottom", ipady=13)
 
         cancel_btn = tk.Button(
             btn_frame, text="Отмена", command=self.destroy, font=("Arial", 15),
-            bg=BG_CARD, fg=FG_TEXT, relief="flat", bd=0, padx=25, pady=8, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
+            bg=BG_CARD, fg=FG_TEXT, relief="flat", bd=0, padx=25, pady=8, 
+            activebackground=BORDER_COLOR, activeforeground=FG_TEXT
         )
         cancel_btn.pack(side="right", padx=18)
 
         save_btn = tk.Button(
             btn_frame, text="Сохранить", command=self.save, font=("Arial", 15, "bold"),
-            bg=ACCENT_COLOR, fg="white", relief="flat", bd=0, padx=25, pady=8, activebackground="#0062a3", activeforeground="white"
+            bg=ACCENT_COLOR, fg="white", relief="flat", bd=0, padx=25, pady=8, 
+            activebackground="#0062a3", activeforeground="white"
         )
         save_btn.pack(side="right", padx=6)
 
-        # Скролл-контейнер контента
-        canvas = tk.Canvas(self, borderwidth=0, highlightthickness=0, bg=BG_MAIN)
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
-        self.scrollable_frame = tk.Frame(canvas, bg=BG_MAIN)
+        # Основной контейнер скроллинга
+        canvas_container = tk.Frame(self, bg=BG_MAIN)
+        canvas_container.pack(fill="both", expand=True, padx=12, pady=12)
 
+        self.canvas = tk.Canvas(canvas_container, borderwidth=0, highlightthickness=0, bg=BG_MAIN)
+        scrollbar = ttk.Scrollbar(canvas_container, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = tk.Frame(self.canvas, bg=BG_MAIN)
+
+        # Динамическое обновление области прокрутки и ширины внутреннего фрейма
         self.scrollable_frame.bind(
             "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all")),
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
         )
-        canvas_frame_id = canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(canvas_frame_id, width=event.width))
+        canvas_frame_id = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(canvas_frame_id, width=event.width))
         
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True, padx=12, pady=12)
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        def _on_dialog_wheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        
-        canvas.bind("<MouseWheel>", _on_dialog_wheel)
-        self.scrollable_frame.bind("<MouseWheel>", _on_dialog_wheel)
+        # Глобальный обработчик скролла (устраняет зависания над полями ввода)
+        self.canvas.bind("<MouseWheel>", self._on_mouse_wheel)
+        self.scrollable_frame.bind("<MouseWheel>", self._on_mouse_wheel)
 
         self.widgets = {}
         for header in self.headers:
@@ -75,6 +81,7 @@ class EditCardDialog(tk.Toplevel):
 
             lbl = tk.Label(frame, text=header, font=("Arial", 14, "bold"), fg=FG_TEXT, bg=BG_MAIN)
             lbl.pack(anchor="w")
+            lbl.bind("<MouseWheel>", self._on_mouse_wheel)
 
             if text_column and header == text_column:
                 text_area = tk.Text(
@@ -85,7 +92,7 @@ class EditCardDialog(tk.Toplevel):
                 text_area.insert("1.0", str(row_data.get(header, "")))
                 text_area.pack(fill="x", pady=5)
                 self.widgets[header] = text_area
-                text_area.bind("<MouseWheel>", _on_dialog_wheel)
+                text_area.bind("<MouseWheel>", self._on_mouse_wheel)
             else:
                 entry = tk.Entry(
                     frame, font=("Arial", 15), bg=BG_CARD, fg=FG_TEXT,
@@ -95,13 +102,18 @@ class EditCardDialog(tk.Toplevel):
                 entry.insert(0, str(row_data.get(header, "")))
                 entry.pack(fill="x", pady=5, ipady=5)
                 self.widgets[header] = entry
-                entry.bind("<MouseWheel>", _on_dialog_wheel)
+                entry.bind("<MouseWheel>", self._on_mouse_wheel)
+
+            frame.bind("<MouseWheel>", self._on_mouse_wheel)
 
         self.initial_geometry(parent)
 
+    def _on_mouse_wheel(self, event):
+        # Перенаправляем прокрутку колесика мыши напрямую на Canvas
+        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
     def initial_geometry(self, parent):
         self.update_idletasks()
-        # Размеры окна увеличены на ~25%
         width, height = 800, 850
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (width // 2)
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (height // 2)
@@ -123,7 +135,7 @@ class KanbanCSVApp(tk.Tk):
         self.title("CSV Kanban Editor")
         self.configure(bg=BG_MAIN)
 
-        # ИСПРАВЛЕНО: Стилизация внутреннего выпадающего списка Tkinter Combobox (убираем черный текст)
+        # Кастомизация выпадающего списка Combobox под темную тему
         self.option_add('*TCombobox*Listbox.background', BG_CARD)
         self.option_add('*TCombobox*Listbox.foreground', FG_TEXT)
         self.option_add('*TCombobox*Listbox.selectBackground', ACCENT_COLOR)
@@ -143,7 +155,6 @@ class KanbanCSVApp(tk.Tk):
         self.setup_styles()
         self.init_main_ui()
 
-        # Размеры увеличены на 25% (идеально для комфортной работы)
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
         width, height = 1850, 1000
@@ -157,18 +168,15 @@ class KanbanCSVApp(tk.Tk):
         style.configure(".", background=BG_MAIN, foreground=FG_TEXT)
         style.configure("TopBar.TFrame", background=BG_PANEL)
         
-        # Шрифты увеличены на 25%
         style.configure("TLabel", background=BG_MAIN, foreground=FG_TEXT, font=("Arial", 15))
         style.configure("Status.TLabel", background=BG_PANEL, foreground=FG_TEXT, font=("Arial", 14, "italic"))
         style.configure("TCombobox", font=("Arial", 15), fieldbackground=BG_CARD, background=BG_PANEL, foreground=FG_TEXT, arrowcolor=FG_TEXT)
         style.configure("Vertical.TScrollbar", gripcount=0, background=BG_PANEL, troughcolor=BG_MAIN, bordercolor=BG_MAIN)
 
     def init_main_ui(self):
-        # Паддинг увеличен
         self.top_bar = ttk.Frame(self, padding=8, style="TopBar.TFrame")
         self.top_bar.pack(fill="x", side="top")
 
-        # Размеры кнопок и отступы увеличены
         self.btn_open = tk.Button(
             self.top_bar, text="Открыть CSV (Ctrl+O)", command=self.open_file, font=("Arial", 14),
             bg=BG_CARD, fg=FG_TEXT, relief="solid", bd=1, padx=15, pady=6, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
@@ -243,7 +251,6 @@ class KanbanCSVApp(tk.Tk):
         win.transient(self)
         win.grab_set()
         
-        # Шрифты и размеры увеличены на 25%
         tk.Label(win, text="Группировать по колонке:", bg=BG_MAIN, font=("Arial", 14, "bold")).pack(pady=(20, 4), padx=25, anchor="w")
         combo_kanban = ttk.Combobox(win, values=self.headers, state="readonly")
         combo_kanban.pack(padx=25, pady=6, fill="x")
@@ -265,7 +272,7 @@ class KanbanCSVApp(tk.Tk):
         tk.Button(win, text="Построить доску", command=confirm, bg=ACCENT_COLOR, fg="white", relief="flat", font=("Arial", 14, "bold"), pady=8, padx=15).pack(pady=25)
         
         win.update_idletasks()
-        w, h = 500, 320  # Увеличено окно конфигурации
+        w, h = 500, 320
         x = self.winfo_x() + (self.winfo_width() // 2) - (w // 2)
         y = self.winfo_y() + (self.winfo_height() // 2) - (h // 2)
         win.geometry(f"{w}x{h}+{max(0, x)}+{max(0, y)}")
@@ -287,8 +294,9 @@ class KanbanCSVApp(tk.Tk):
         sorted_values = sorted(list(self.column_data_map.keys()))
         num_columns = len(sorted_values)
 
+        # ИСПРАВЛЕНО: Колонки адаптивно делят ВСЁ свободное пространство экрана, пустота справа убрана
         for col_idx in range(num_columns):
-            self.main_container.grid_columnconfigure(col_idx, weight=1, uniform="equal_cols")
+            self.main_container.grid_columnconfigure(col_idx, weight=1, uniform="group1")
         self.main_container.grid_rowconfigure(0, weight=1)
 
         for col_idx, col_value in enumerate(sorted_values):
@@ -344,13 +352,13 @@ class KanbanCSVApp(tk.Tk):
                 val_trunc = val[:45] + "..." if len(val) > 45 else val
                 preview_text += f"• {h}: {val_trunc}\n"
 
-            # wraplength увеличена до 350 под новые масштабы
             lbl = tk.Label(
                 card, text=preview_text.strip(), bg=BG_CARD, fg=FG_TEXT, justify="left",
                 anchor="w", font=("Arial", 13), padx=10, pady=10, wraplength=350
             )
             lbl.pack(fill="both", expand=True)
 
+            # Навешивание сквозного обработчика скролла на внутренние элементы карточек
             card.bind("<Configure>", lambda e, l=lbl: l.config(wraplength=max(150, e.width - 20)))
             card.bind("<MouseWheel>", wheel_handler)
             lbl.bind("<MouseWheel>", wheel_handler)

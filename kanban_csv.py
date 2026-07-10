@@ -71,7 +71,7 @@ class EditCardDialog(tk.Toplevel):
         canvas.pack(side="left", fill="both", expand=True, padx=15, pady=15)
         scrollbar.pack(side="right", fill="y")
 
-        # ИСПРАВЛЕНО: Безопасный локальный скролл только при наведении на Canvas
+        # Безопасный локальный скролл только при наведении на Canvas
         def _on_dialog_wheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
         
@@ -137,7 +137,7 @@ class EditCardDialog(tk.Toplevel):
         self.destroy()
 
     def destroy(self):
-        self.unbind_all("<MouseWheel>") # Гарантированно очищаем бинды
+        self.unbind_all("<MouseWheel>")
         super().destroy()
 
 
@@ -273,12 +273,10 @@ class KanbanCSVApp(tk.Tk):
         self.main_container = tk.Frame(self, bg=BG_MAIN)
         self.main_container.pack(fill="both", expand=True, padx=12, pady=12)
 
-        # Локальные шорткаты
         self.bind_all("<Control-o>", lambda e: self.open_file())
         self.bind_all("<Control-s>", lambda e: self.save_file())
 
     def open_file(self):
-        # Теперь диалог открытия отрабатывает штатно, так как глобальный скролл больше его не перехватывает
         file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")])
         if not file_path:
             return
@@ -328,7 +326,9 @@ class KanbanCSVApp(tk.Tk):
         win.title("Выбор колонки")
         win.geometry("450x220")
         win.configure(bg=BG_MAIN)
-        win.overrideredirect(True) 
+        
+        # ИСПРАВЛЕНО: Убрали overrideredirect для окна выбора колонки доски,
+        # чтобы оно гарантированно рендерилось поверх и не крашило фокус в Windows.
         win.transient(self)
         win.grab_set()
 
@@ -398,7 +398,6 @@ class KanbanCSVApp(tk.Tk):
             canvas.bind("<Configure>", _configure_canvas)
             cards_frame.bind("<Configure>", lambda e, c=canvas: c.configure(scrollregion=c.bbox("all")))
 
-            # ИСПРАВЛЕНО: Безопасный локальный скролл для колонок доски
             def _make_wheel_handler(target_canvas):
                 return lambda event: target_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 

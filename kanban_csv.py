@@ -37,7 +37,7 @@ class EditCardDialog(tk.Toplevel):
         canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        # ИСПРАВЛЕНО: py=10 заменено на pady=10
+        # Полные имена параметров: padx и pady
         canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         scrollbar.pack(side="right", fill="y")
 
@@ -65,9 +65,8 @@ class EditCardDialog(tk.Toplevel):
             entry.pack(fill="x", pady=4, ipady=4)
             self.entries[header] = entry
 
-        # Вместо ttk используем tk.Frame для кастомного цвета фона панели кнопок
-        btn_frame = tk.Frame(self, bg=BG_PANEL, padding=10) if hasattr(tk.Frame, 'padding') else tk.Frame(self, bg=BG_PANEL)
-        btn_frame.pack(fill="x", side="bottom", ipady=5)
+        btn_frame = tk.Frame(self, bg=BG_PANEL)
+        btn_frame.pack(fill="x", side="bottom", ipady=10)
 
         cancel_btn = tk.Button(
             btn_frame, text="Отмена", command=self.destroy,
@@ -150,7 +149,6 @@ class KanbanCSVApp(tk.Tk):
             font=("Arial", 10, "italic"),
             style="Status.TLabel"
         )
-        # ИСПРАВЛЕНО: удален некорректный параметр vertical_alignment
         self.lbl_status.pack(side="left", anchor="w", pady=5)
 
         self.btn_change_col = tk.Button(
@@ -164,7 +162,8 @@ class KanbanCSVApp(tk.Tk):
         )
 
         self.main_container = ttk.Frame(self)
-        self.main_container.pack(fill="both", expand=True, padx=5, py=5)
+        # ИСПРАВЛЕНО: строго прописаны padx и pady
+        self.main_container.pack(fill="both", expand=True, padx=5, pady=5)
 
         self.board_canvas = tk.Canvas(self.main_container, borderwidth=0, highlightthickness=0, bg=BG_MAIN)
         self.h_scrollbar = ttk.Scrollbar(
@@ -398,7 +397,7 @@ class KanbanCSVApp(tk.Tk):
 
             messagebox.showinfo("Успех", "Данные успешно сохранены в файл!")
         except Exception as e:
-            messagebox.showerror("Ошибка сохранения", f"Не удалось сохранить файл:\n{str(e)}")
+            messagebox.showerror("Ошибка保存ения", f"Не удалось сохранить файл:\n{str(e)}")
 
 
 if __name__ == "__main__":

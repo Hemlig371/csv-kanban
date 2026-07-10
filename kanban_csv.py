@@ -66,10 +66,10 @@ class KanbanCSVApp(ctk.CTk):
         self.top_bar.pack(fill="x", side="top")
         self.top_bar.pack_propagate(False)
 
-        self.btn_open = ctk.CTkButton(self.top_bar, text="Открыть CSV (Ctrl+O)", command=self.open_file, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=190, height=45)
+        self.btn_open = ctk.CTkButton(self.top_bar, text="Открыть CSV", command=self.open_file, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=190, height=45)
         self.btn_open.pack(side="left", padx=10)
 
-        self.btn_save = ctk.CTkButton(self.top_bar, text="Сохранить (Ctrl+S)", command=self.save_file, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=190, height=45)
+        self.btn_save = ctk.CTkButton(self.top_bar, text="Сохранить", command=self.save_file, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=190, height=45)
         self.btn_save.pack(side="left", padx=5)
 
         self.btn_change_col = ctk.CTkButton(self.top_bar, text="Настройка колонок", command=self.setup_kanban_columns_dialog, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=190, height=45)
@@ -77,6 +77,9 @@ class KanbanCSVApp(ctk.CTk):
 
         self.lbl_status = ctk.CTkLabel(self.top_bar, text="Файлы не загружены.", font=FONT_MUTED_ITALIC, text_color=FG_TEXT)
         self.lbl_status.pack(side="left", padx=20)
+
+        self.lbl_global_notify = ctk.CTkLabel(self.top_bar, text="", font=FONT_TEXT_BOLD, text_color="#10b981")
+        self.lbl_global_notify.pack(side="left", padx=10)
 
         self.btn_close_tab = ctk.CTkButton(self.top_bar, text="Закрыть ✕", command=self.close_current_tab, font=FONT_MAIN, fg_color="#a83232", hover_color="#822525", width=120, height=40)
 
@@ -97,6 +100,10 @@ class KanbanCSVApp(ctk.CTk):
         self.editor_widgets = {}
         self.current_editing_row = None
         self.show_editor_placeholder()
+
+    def show_notification(self, text, color="#10b981"):
+        self.lbl_global_notify.configure(text=text, text_color=color)
+        self.after(3000, lambda: self.lbl_global_notify.configure(text=""))
 
     def get_target_text_widget(self):
         w = self.focus_get()
@@ -344,9 +351,6 @@ class KanbanCSVApp(ctk.CTk):
         ctk.CTkButton(bf, text="Отмена", command=self.show_editor_placeholder, width=130, height=40, font=FONT_MAIN).pack(side="right", padx=5)
         ctk.CTkButton(bf, text="Сохранить", command=lambda: self.save_edit(is_new), fg_color="#007acc", width=130, height=40, font=FONT_TEXT_BOLD).pack(side="right", padx=5)
 
-        self.lbl_mini_status = ctk.CTkLabel(bf, text="", font=FONT_TEXT_BOLD, text_color="#10b981")
-        self.lbl_mini_status.pack(side="left", padx=5)
-
         editor_canvas = tk.Canvas(self.right_editor_frame, bg=BG_PANEL, highlightthickness=0)
         ed_scroll = AutoHideScrollbar(self.right_editor_frame, orientation="vertical", command=editor_canvas.yview)
         editor_canvas.configure(yscrollcommand=ed_scroll.set)
@@ -355,15 +359,17 @@ class KanbanCSVApp(ctk.CTk):
         editor_canvas.pack(side="left", fill="both", expand=True)
         
         sf = ctk.CTkFrame(editor_canvas, fg_color=BG_PANEL)
-        editor_canvas.create_window((0,0), window=sf, anchor="nw", width=490)
+        canvas_frame_id = editor_canvas.create_window((0,0), window=sf, anchor="nw")
         
-        sf.bind("<Configure>", lambda e: editor_canvas.configure(scrollregion=editor_canvas.bbox("all")))
+        editor_canvas.bind('<Configure>', lambda e, cv=editor_canvas, fid=canvas_frame_id: cv.itemconfigure(fid, width=e.width))
+        sf.bind("<Configure>", lambda e, cv=editor_canvas: cv.configure(scrollregion=cv.bbox("all")))
         
         def make_editor_scroll(cv):
             return lambda e: cv.yview_scroll(int(-1 * (e.delta / 120)), "units")
             
         editor_canvas.bind("<Enter>", lambda e, cv=editor_canvas: cv.bind_all("<MouseWheel>", make_editor_scroll(cv)))
         editor_canvas.bind("<Leave>", lambda e, cv=editor_canvas: cv.unbind_all("<MouseWheel>"))
+        sf.bind("<Enter>", lambda e, cv=editor_canvas: cv.bind_all("<MouseWheel>", make_editor_scroll(cv)))
         
         self.editor_widgets = {}
         st_list = sorted(list(set(str(r.get(d["kanban_column"], "")).strip() for r in d["data"] if r.get(d["kanban_column"], ""))))
@@ -386,7 +392,7 @@ class KanbanCSVApp(ctk.CTk):
                 w.insert(0, str(row.get(h, "")))
                 target_w = w._entry
                 
-            w.pack(fill="x", pady=2, padx=(0, 15))
+            w.pack(fill="x", pady=2, padx=(0, 5))
             self.editor_widgets[h] = w
             target_w.bind("<Button-3>", lambda event, tw=target_w: self.show_context_menu(event, tw))
 
@@ -399,7 +405,9 @@ class KanbanCSVApp(ctk.CTk):
         self.current_editing_row.update(res)
         if is_new: d["data"].append(self.current_editing_row)
         
-        self.build_board(); self.show_editor_placeholder()
+        self.build_board()
+        self.show_editor_placeholder()
+        self.show_notification("Изменения применены", "#10b981")
 
     def add_new_card(self):
         if self.active_tab: self.load_editor({h: "" for h in self.tabs_data[self.active_tab]["headers"]}, True)
@@ -412,9 +420,7 @@ class KanbanCSVApp(ctk.CTk):
                 w = csv.DictWriter(f, fieldnames=d["headers"], dialect=d["csv_dialect"])
                 w.writeheader(); w.writerows(d["data"])
             
-            if hasattr(self, 'lbl_mini_status') and self.lbl_mini_status.winfo_exists():
-                self.lbl_mini_status.configure(text="Сохранено успешно!")
-                self.after(3000, lambda: self.lbl_mini_status.configure(text="") if self.lbl_mini_status.winfo_exists() else None)
+            self.show_notification("Файл успешно сохранен на диск!", "#10b981")
         except Exception as e: 
             messagebox.showerror("Error", str(e))
 

@@ -23,7 +23,7 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --noconfirm --onedir --windowed --icon="icon.ico" "kanban_csv.py"
+        pyinstaller --noconfirm --onefile --windowed --icon="icon.ico" --collect-all customtkinter "kanban_csv.py"
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4

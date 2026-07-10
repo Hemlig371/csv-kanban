@@ -20,11 +20,9 @@ class EditCardDialog(tk.Toplevel):
         super().__init__(parent)
         self.title("Новая запись" if is_new else "Редактирование записи")
         
-        # Увеличенные размеры диалогового окна на 50%
         self.geometry("675x750")
         self.configure(bg=BG_MAIN)
         
-        # Делаем окно редактирования тоже Borderless
         self.overrideredirect(True)
         self.transient(parent)
         self.grab_set()
@@ -44,6 +42,13 @@ class EditCardDialog(tk.Toplevel):
             fg=FG_TEXT, bg=BG_PANEL, font=("Arial", 14, "bold")
         )
         title_lbl.pack(side="left", padx=15)
+
+        # ДОБАВЛЕНО: Кнопка закрытия (крестик) для окна редактирования
+        close_btn = tk.Button(self.dialog_title_bar, text="✕", bg=BG_PANEL, fg=FG_TEXT, bd=0, font=("Arial", 14), width=5,
+                              activebackground=CLOSE_HOVER, activeforeground="white", command=self.destroy)
+        close_btn.pack(side="right", fill="y")
+        close_btn.bind("<Enter>", lambda e: close_btn.config(bg=CLOSE_HOVER))
+        close_btn.bind("<Leave>", lambda e: close_btn.config(bg=BG_PANEL))
 
         # Перетаскивание диалога
         self.dialog_title_bar.bind("<Button-1>", self.start_drag)
@@ -66,7 +71,8 @@ class EditCardDialog(tk.Toplevel):
         canvas.pack(side="left", fill="both", expand=True, padx=15, pady=15)
         scrollbar.pack(side="right", fill="y")
 
-        self.bind_mouse_wheel(canvas)
+        # ИСПРАВЛЕНО: Скролл привязывается строго к Canvas
+        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
 
         self.entries = {}
         for header in self.headers:
@@ -92,14 +98,10 @@ class EditCardDialog(tk.Toplevel):
             entry.pack(fill="x", pady=6, ipady=6)
             self.entries[header] = entry
 
-            # Привязка скролла к инпутам, чтобы колесико работало везде
-            self.bind_mouse_wheel(entry)
-
-        # Нижняя панель с кнопками (Исправлено: убран недопустимый padding)
+        # Нижняя панель с кнопками
         btn_frame = tk.Frame(self, bg=BG_PANEL)
         btn_frame.pack(fill="x", side="bottom", ipady=15)
 
-        # Кнопки увеличены на 50%
         cancel_btn = tk.Button(
             btn_frame, text="Отмена", command=self.destroy, font=("Arial", 14),
             bg=BG_CARD, fg=FG_TEXT, relief="flat", bd=0, padx=22, pady=8, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
@@ -130,8 +132,10 @@ class EditCardDialog(tk.Toplevel):
         self.result = {h: self.entries[h].get() for h in self.headers}
         self.destroy()
 
-    def bind_mouse_wheel(self, widget):
-        widget.bind("<MouseWheel>", lambda e: widget.yview_scroll(int(-1 * (e.delta / 120)), "units"))
+    # Уничтожаем глобальный бинд колесика мыши при закрытии диалога, чтобы вернуть управление главной доске
+    def destroy(self):
+        self.unbind_all("<MouseWheel>")
+        super().destroy()
 
 
 class KanbanCSVApp(tk.Tk):
@@ -139,8 +143,6 @@ class KanbanCSVApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("CSV Kanban Editor")
-        
-        # Дефолтный размер увеличен на 50%
         self.geometry("1600x950")
         self.configure(bg=BG_MAIN)
 
@@ -166,7 +168,6 @@ class KanbanCSVApp(tk.Tk):
         style.configure("TFrame", background=BG_MAIN)
         style.configure("TopBar.TFrame", background=BG_PANEL)
         
-        # Шрифты во всех стандартных лейблах увеличены
         style.configure("TLabel", background=BG_MAIN, foreground=FG_TEXT, font=("Arial", 14))
         style.configure("Status.TLabel", background=BG_PANEL, foreground=FG_TEXT, font=("Arial", 13, "italic"))
         style.configure("TCombobox", font=("Arial", 14), fieldbackground=BG_CARD, background=BG_PANEL, foreground=FG_TEXT, arrowcolor=FG_TEXT)
@@ -175,7 +176,6 @@ class KanbanCSVApp(tk.Tk):
         style.configure("Horizontal.TScrollbar", gripcount=0, background=BG_PANEL, troughcolor=BG_MAIN, bordercolor=BG_MAIN)
 
     def init_custom_title_bar(self):
-        # Высота заголовка увеличена до 48px
         self.title_bar = tk.Frame(self, bg=BG_PANEL, height=48)
         self.title_bar.pack(fill="x", side="top")
         self.title_bar.pack_propagate(False)
@@ -183,7 +183,6 @@ class KanbanCSVApp(tk.Tk):
         title_label = tk.Label(self.title_bar, text=" 📋 CSV Kanban Editor", fg=FG_TEXT, bg=BG_PANEL, font=("Arial", 14, "bold"))
         title_label.pack(side="left", padx=15)
 
-        # Кнопки управления окном увеличены
         close_btn = tk.Button(self.title_bar, text="✕", bg=BG_PANEL, fg=FG_TEXT, bd=0, font=("Arial", 14), width=5,
                               activebackground=CLOSE_HOVER, activeforeground="white", command=self.quit)
         close_btn.pack(side="right", fill="y")
@@ -215,16 +214,14 @@ class KanbanCSVApp(tk.Tk):
         self.geometry(f"+{x}+{y}")
 
     def toggle_maximize(self):
-        """Умная максимизация без перекрытия Панели задач Windows"""
         if self._is_maximized:
             self.geometry(self._old_geometry)
             self.max_btn.config(text="🗖")
             self._is_maximized = False
         else:
             self._old_geometry = self.geometry()
-            # Запрашиваем размеры доступной рабочей области экрана (минус таскбар)
             max_w = self.winfo_screenwidth()
-            max_h = self.winfo_screenheight() - 50  # Резервируем место под стандартный таскбар ОС
+            max_h = self.winfo_screenheight() - 50  
             self.geometry(f"{max_w}x{max_h}+0+0")
             self.max_btn.config(text="🗗")
             self._is_maximized = True
@@ -243,7 +240,6 @@ class KanbanCSVApp(tk.Tk):
         self.top_bar = ttk.Frame(self, padding=8, style="TopBar.TFrame")
         self.top_bar.pack(fill="x", side="top")
 
-        # Кнопки с увеличенными шрифтами и отступами
         self.btn_open = tk.Button(
             self.top_bar, text="Открыть CSV (Ctrl+O)", command=self.open_file, font=("Arial", 13),
             bg=BG_CARD, fg=FG_TEXT, relief="solid", bd=1, highlightthickness=0, padx=15, pady=6, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
@@ -327,6 +323,7 @@ class KanbanCSVApp(tk.Tk):
         win.title("Выбор колонки")
         win.geometry("450x220")
         win.configure(bg=BG_MAIN)
+        win.overrideredirect(True) # Делаем окно выбора колонки тоже Borderless
         win.transient(self)
         win.grab_set()
 

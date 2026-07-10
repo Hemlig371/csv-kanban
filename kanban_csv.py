@@ -132,7 +132,7 @@ class KanbanCSVApp(tk.Tk):
         self.v_scrollbar.pack(side="right", fill="y")
         self.board_canvas.pack(side="left", fill="both", expand=True)
 
-    def open_file(self):
+def open_file(self):
         file_path = filedialog.askopenfilename(
             filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
         )
@@ -140,32 +140,57 @@ class KanbanCSVApp(tk.Tk):
             return
 
         try:
+            # Читаем файл целиком, чтобы надежно определить разделитель
             with open(file_path, "r", encoding="utf-8") as f:
-                sample = f.read(2048)
-                f.seek(0)
+                lines = f.readlines()
+            
+            if not lines:
+                raise ValueError("Файл абсолютно пустой.")
 
-                # Пытаемся бережно определить структуру (разделитель, кавычки)
-                try:
-                    self.csv_dialect = csv.Sniffer().sniff(sample)
-                except csv.Error:
-                    self.csv_dialect = (
-                        csv.excel  # Дефолт, если не удалось определить
-                    )
+            first_line = lines[0]
+            
+            # Вручную ищем наиболее вероятный разделитель (запятая, точка с запятой или таб)
+            possible_delimiters = [';', ',', '\t']
+            delimiter = ',' # по умолчанию
+            max_count = -1
+            
+            for d in possible_delimiters:
+                count = first_line.count(d)
+                if count > max_count:
+                    max_count = count
+                    delimiter = d
 
-                reader = csv.DictReader(f, dialect=self.csv_dialect)
+            # Читаем данные заново, используя гарантированный разделитель
+            with open(file_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f, delimiter=delimiter)
                 self.headers = reader.fieldnames
                 self.data = list(reader)
 
+            # Проверяем, удалось ли вытащить заголовки
+            if not self.headers or len(self.headers) <= 1 and delimiter not in first_line:
+                # На случай, если в файле всего одна колонка без разделителей
+                if self.headers:
+                    pass
+                else:
+                    raise ValueError("Не удалось определить заголовки колонок.")
+
             self.file_path = file_path
+            # Нам нужен кастомный класс диалекта для последующего сохранения с тем же разделителем
+            class CustomDialect(csv.excel):
+                delimiter = d
+            self.csv_dialect = CustomDialect
+            
+            # Обновляем статусбар
             self.lbl_status.config(
-                text=f"Файл: {os.path.basename(file_path)} | Строк: {len(self.data)}"
+                text=f"Файл: {os.path.basename(file_path)} | Строк: {len(self.data)} | Разделитель: {repr(delimiter)}"
             )
+            self.btn_change_col.pack(side="right", padx=5)
+            
+            # Открываем окно выбора колонки
             self.choose_kanban_column()
 
         except Exception as e:
-            messagebox.showerror(
-                "Ошибка", f"Не удалось прочитать файл:\n{str(e)}"
-            )
+            messagebox.showerror("Ошибка парсинга CSV", f"Не удалось прочитать структуру файла:\n{str(e)}")
 
     def choose_kanban_column(self):
         # Окно выбора колонки для построения доски

@@ -21,14 +21,32 @@ class EditCardDialog(tk.Toplevel):
         self.title("Новая запись" if is_new else "Редактирование записи")
         self.configure(bg=BG_MAIN)
         
-        # Корректное модальное поведение в Windows
+        # Модальный режим
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.headers = headers
         self.result = None
 
-        # Контейнер со скроллом
+        # ИСПРАВЛЕНО: Сначала пакуем нижнюю панель управления, чтобы она гарантированно 
+        # была видима на любых экранах и при любом масштабировании интерфейса.
+        btn_frame = tk.Frame(self, bg=BG_PANEL)
+        btn_frame.pack(fill="x", side="bottom", ipady=15)
+
+        cancel_btn = tk.Button(
+            btn_frame, text="Отмена", command=self.on_close, font=("Arial", 14),
+            bg=BG_CARD, fg=FG_TEXT, relief="flat", bd=0, padx=22, pady=8, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
+        )
+        cancel_btn.pack(side="right", padx=15)
+
+        save_btn = tk.Button(
+            btn_frame, text="Сохранить", command=self.save, font=("Arial", 14, "bold"),
+            bg=ACCENT_COLOR, fg="white", relief="flat", bd=0, padx=22, pady=8, activebackground="#0062a3", activeforeground="white"
+        )
+        save_btn.pack(side="right", padx=10)
+
+        # Теперь пакуем холст для контента, который займет все ОСТАВШЕЕСЯ пространство
         canvas = tk.Canvas(self, borderwidth=0, highlightthickness=0, bg=BG_MAIN)
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
         self.scrollable_frame = tk.Frame(canvas, bg=BG_MAIN)
@@ -43,7 +61,6 @@ class EditCardDialog(tk.Toplevel):
         canvas.pack(side="left", fill="both", expand=True, padx=15, pady=15)
         scrollbar.pack(side="right", fill="y")
 
-        # Чистый локальный скролл без bind_all
         def _on_dialog_wheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
         
@@ -73,25 +90,7 @@ class EditCardDialog(tk.Toplevel):
             entry.insert(0, str(row_data.get(header, "")))
             entry.pack(fill="x", pady=6, ipady=6)
             self.entries[header] = entry
-
-            # Пробрасываем скролл с инпутов на Canvas
             entry.bind("<MouseWheel>", _on_dialog_wheel)
-
-        # Панель управления (кнопки)
-        btn_frame = tk.Frame(self, bg=BG_PANEL)
-        btn_frame.pack(fill="x", side="bottom", ipady=15)
-
-        cancel_btn = tk.Button(
-            btn_frame, text="Отмена", command=self.destroy, font=("Arial", 14),
-            bg=BG_CARD, fg=FG_TEXT, relief="flat", bd=0, padx=22, pady=8, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
-        )
-        cancel_btn.pack(side="right", padx=15)
-
-        save_btn = tk.Button(
-            btn_frame, text="Сохранить", command=self.save, font=("Arial", 14, "bold"),
-            bg=ACCENT_COLOR, fg="white", relief="flat", bd=0, padx=22, pady=8, activebackground="#0062a3", activeforeground="white"
-        )
-        save_btn.pack(side="right", padx=10)
 
         self.initial_geometry(parent)
 
@@ -109,6 +108,10 @@ class EditCardDialog(tk.Toplevel):
 
     def save(self):
         self.result = {h: self.entries[h].get() for h in self.headers}
+        self.on_close()
+
+    def on_close(self):
+        self.grab_release()
         self.destroy()
 
 
@@ -118,9 +121,20 @@ class KanbanCSVApp(tk.Tk):
         super().__init__()
         self.title("CSV Kanban Editor")
         
-        # Убираем системные рамки главного окна
+        # Безрамочный режим
         self.overrideredirect(True)
         self.configure(bg=BG_MAIN)
+
+        # ИСПРАВЛЕНО: Низкоуровневый вызов стилей окон Windows (через tk call).
+        # Переключаем бит стиля WS_EX_APPWINDOW, который заставляет Windows принудительно
+        # выводить безрамочное (overrideredirect) окно на панель задач (таскбар).
+        self.update_idletasks()
+        try:
+            self.tk.call('wm', 'attributes', self._w, '-topmost', False)
+            # Трюк со сменой родительского контекста на рабочий стол Windows
+            self.tk.call('wm', 'iconwindow', self._w, '')
+        except:
+            pass
 
         self.file_path = None
         self.headers = []
@@ -135,7 +149,7 @@ class KanbanCSVApp(tk.Tk):
         self.init_custom_title_bar()
         self.init_main_ui()
 
-        # Центрирование при запуске по центру экрана
+        # Центрирование главного окна по экрану
         self.update_idletasks()
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
@@ -299,7 +313,7 @@ class KanbanCSVApp(tk.Tk):
             self.choose_kanban_column()
 
         except Exception as e:
-            messagebox.showerror("Ошибка парсинга CSV", f"Не удалось прочитать файл:\n{str(e)}")
+            messagebox.showerror("Ошибка парсинга CSV", f"Не удалось прочитать HTML/CSV:\n{str(e)}")
 
     def choose_kanban_column(self):
         win = tk.Toplevel(self)
@@ -307,6 +321,11 @@ class KanbanCSVApp(tk.Tk):
         win.configure(bg=BG_MAIN)
         win.transient(self)
         win.grab_set()
+        
+        def on_win_close():
+            win.grab_release()
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", on_win_close)
 
         tk.Label(win, text="Выберите колонку для распределения:", bg=BG_MAIN, fg=FG_TEXT, font=("Arial", 14)).pack(pady=20, padx=30)
         combo = ttk.Combobox(win, values=self.headers, state="readonly", font=("Arial", 12))
@@ -319,7 +338,7 @@ class KanbanCSVApp(tk.Tk):
 
         def confirm():
             self.kanban_column = combo.get()
-            win.destroy()
+            on_win_close()
             self.build_board()
 
         tk.Button(win, text="Построить доску", command=confirm, bg=ACCENT_COLOR, fg="white", relief="flat", bd=0, padx=22, pady=8, font=("Arial", 14, "bold")).pack(pady=20)
@@ -375,7 +394,6 @@ class KanbanCSVApp(tk.Tk):
             canvas.bind("<Configure>", _config_canvas)
             cards_frame.bind("<Configure>", lambda e, c=canvas: c.configure(scrollregion=c.bbox("all")))
 
-            # ИСПРАВЛЕНО: Безопасный точечный скролл без утечек ресурсов через нативный bind виджета
             def _on_column_wheel(event, cv=canvas):
                 cv.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
@@ -413,7 +431,6 @@ class KanbanCSVApp(tk.Tk):
 
         card.bind("<Configure>", lambda e, l=lbl: l.config(wraplength=max(150, e.width - 25)))
 
-        # Пробрасываем событие скролла на саму карточку и лейбл, чтобы доска крутилась плавно
         card.bind("<MouseWheel>", wheel_handler)
         lbl.bind("<MouseWheel>", wheel_handler)
 
@@ -457,7 +474,7 @@ class KanbanCSVApp(tk.Tk):
                 writer.writerows(self.data)
             messagebox.showinfo("Успех", "Данные успешно сохранены!")
         except Exception as e:
-            messagebox.showerror("Ошибка保存", f"Не удалось сохранить файл:\n{str(e)}")
+            messagebox.showerror("Ошибка сохранения", f"Не удалось сохранить файл:\n{str(e)}")
 
 
 if __name__ == "__main__":

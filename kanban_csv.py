@@ -31,6 +31,15 @@ class KanbanCSVApp(ctk.CTk):
         self.title("CSV Kanban Editor Pro")
         self.configure(fg_color=BG_MAIN)
 
+        try:
+            if os.path.exists("icon.ico"):
+                self.iconbitmap("icon.ico")
+            elif os.path.exists("icon.png"):
+                img = tk.PhotoImage(file="icon.png")
+                self.iconphoto(True, img)
+        except Exception:
+            pass
+
         self.tabs_data = {}
         self.active_tab = None
 
@@ -267,14 +276,11 @@ class KanbanCSVApp(ctk.CTk):
             col_frame.grid(row=0, column=col_idx, padx=6, pady=5, sticky="nsew")
             col_frame.pack_propagate(False)
 
-            col_header = ctk.CTkLabel(col_frame, text=f"{col_title.upper()} ({len(rows_in_col)})", font=FONT_HEADER, text_color=FG_TEXT)
-            col_header.pack(fill="x", pady=14)
+            col_header = ctk.CTkLabel(col_frame, text=f"{col_title.upper()} ({len(rows_in_col)})", font=FONT_HEADER, text_color=FG_TEXT, fg_color="transparent")
+            col_header.pack(fill="x", pady=14, padx=5)
 
             scroll_cards_frame = ctk.CTkScrollableFrame(col_frame, fg_color=BG_PANEL, corner_radius=0)
             scroll_cards_frame.pack(fill="both", expand=True, padx=2, pady=2)
-
-            if hasattr(scroll_cards_frame, "_scrollbar"):
-                scroll_cards_frame._scrollbar.pack_forget()
 
             t_data["column_pages"][col_value] = PAGE_SIZE
 
@@ -284,10 +290,6 @@ class KanbanCSVApp(ctk.CTk):
                         y_view = frame._canvas.yview()
                         if y_view[1] >= 0.9:
                             self.load_more_cards(val, frame)
-                        if y_view[0] == 0.0 and y_view[1] == 1.0:
-                            frame._scrollbar.pack_forget()
-                        else:
-                            frame._scrollbar.pack(side="right", fill="y")
                 return check_scroll
 
             scroll_listener = make_scroll_listener()
@@ -327,17 +329,6 @@ class KanbanCSVApp(ctk.CTk):
 
             card.bind("<Double-1>", make_click_handler())
             lbl.bind("<Double-1>", make_click_handler())
-            
-        self.after(200, lambda: self.toggle_scrollbar_visibility(target_frame))
-
-    def toggle_scrollbar_visibility(self, frame):
-        if hasattr(frame, "_canvas") and hasattr(frame, "_scrollbar"):
-            frame._canvas.update_idletasks()
-            y_view = frame._canvas.yview()
-            if y_view[0] == 0.0 and y_view[1] == 1.0:
-                frame._scrollbar.pack_forget()
-            else:
-                frame._scrollbar.pack(side="right", fill="y")
 
     def load_more_cards(self, col_value, target_frame):
         t_data = self.tabs_data[self.active_tab]

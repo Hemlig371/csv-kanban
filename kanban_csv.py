@@ -3,14 +3,15 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-# --- Константы цветовой схемы (Dark Theme) ---
-BG_MAIN = "#1e1e1e"        # Главный фон приложения
-BG_PANEL = "#252526"       # Фон панелей и колонок
-BG_CARD = "#2d2d30"        # Фон карточек
-FG_TEXT = "#e1e1e1"        # Основной текст
-FG_MUTED = "#858585"       # Тусклый текст (для пустых колонок)
-ACCENT_COLOR = "#007acc"   # Акцентный синий цвет (для кнопок)
-BORDER_COLOR = "#3f3f46"   # Цвет границ
+# --- Константы цветовой схемы (Modern Dark) ---
+BG_MAIN = "#1e1e1e"        
+BG_PANEL = "#252526"       
+BG_CARD = "#2d2d30"        
+FG_TEXT = "#e1e1e1"        
+FG_MUTED = "#858585"       
+ACCENT_COLOR = "#007acc"   
+BORDER_COLOR = "#3f3f46"   
+CLOSE_HOVER = "#e81123"    
 
 
 class EditCardDialog(tk.Toplevel):
@@ -37,9 +38,11 @@ class EditCardDialog(tk.Toplevel):
         canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        # Полные имена параметров: padx и pady
         canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         scrollbar.pack(side="right", fill="y")
+
+        # Привязка скролла мыши в диалоговом окне
+        self.bind_mouse_wheel(canvas)
 
         self.entries = {}
         for header in self.headers:
@@ -85,9 +88,8 @@ class EditCardDialog(tk.Toplevel):
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.winfo_height() // 2)
         self.geometry(f"+{x}+{y}")
 
-    def save(self):
-        self.result = {h: self.entries[h].get() for h in self.headers}
-        self.destroy()
+    def bind_mouse_wheel(self, widget):
+        widget.bind_all("<MouseWheel>", lambda e: widget.yview_scroll(int(-1 * (e.delta / 120)), "units"))
 
 
 class KanbanCSVApp(tk.Tk):
@@ -98,116 +100,154 @@ class KanbanCSVApp(tk.Tk):
         self.geometry("1200x750")
         self.configure(bg=BG_MAIN)
 
+        # Включаем Borderless режим (убираем стандартную рамку ОС)
+        self.overrideredirect(True)
+
         self.file_path = None
         self.headers = []
         self.data = []
         self.csv_dialect = None
         self.kanban_column = None
+        self._is_maximized = False
+
+        # Переменные для перетаскивания окна мышкой
+        self._drag_data = {"x": 0, "y": 0}
 
         self.setup_styles()
-        self.init_menu()
+        self.init_custom_title_bar()
         self.init_main_ui()
 
     def setup_styles(self):
         style = ttk.Style()
         style.theme_use("default")
-        
         style.configure("TFrame", background=BG_MAIN)
         style.configure("TopBar.TFrame", background=BG_PANEL)
         style.configure("TLabel", background=BG_MAIN, foreground=FG_TEXT)
         style.configure("Status.TLabel", background=BG_PANEL, foreground=FG_TEXT)
-        
         style.configure("TCombobox", fieldbackground=BG_CARD, background=BG_PANEL, foreground=FG_TEXT, arrowcolor=FG_TEXT)
-        
         style.configure("Vertical.TScrollbar", gripcount=0, background=BG_PANEL, darkcolor=BG_MAIN, lightcolor=BG_MAIN, troughcolor=BG_MAIN, bordercolor=BG_MAIN)
         style.configure("Horizontal.TScrollbar", gripcount=0, background=BG_PANEL, darkcolor=BG_MAIN, lightcolor=BG_MAIN, troughcolor=BG_MAIN, bordercolor=BG_MAIN)
 
-    def init_menu(self):
-        menubar = tk.Menu(self, bg=BG_PANEL, fg=FG_TEXT, activebackground=ACCENT_COLOR, activeforeground="white", bd=0)
-        file_menu = tk.Menu(menubar, tearoff=0, bg=BG_PANEL, fg=FG_TEXT, activebackground=ACCENT_COLOR, activeforeground="white", bd=0)
-        file_menu.add_command(
-            label="Открыть CSV...", command=self.open_file, accelerator="Ctrl+O"
-        )
-        file_menu.add_command(
-            label="Сохранить CSV", command=self.save_file, accelerator="Ctrl+S"
-        )
-        file_menu.add_separator()
-        file_menu.add_command(label="Выход", command=self.quit)
-        menubar.add_cascade(label="Файл", menu=file_menu)
-        self.config(menu=menubar)
+    def init_custom_title_bar(self):
+        """Создает кастомный заголовок окна со встроенным управлением"""
+        self.title_bar = tk.Frame(self, bg=BG_PANEL, height=32)
+        self.title_bar.pack(fill="x", side="top")
+        self.title_bar.pack_propagate(False)
 
-        self.bind("<Control-o>", lambda e: self.open_file())
-        self.bind("<Control-s>", lambda e: self.save_file())
+        # Иконка/Заголовок приложения
+        title_label = tk.Label(self.title_bar, text=" 📋 CSV Kanban Editor", fg=FG_TEXT, bg=BG_PANEL, font=("Arial", 9, "bold"))
+        title_label.pack(side="left", padx=10)
+
+        # Кнопки управления окном (справа налево)
+        close_btn = tk.Button(self.title_bar, text="✕", bg=BG_PANEL, fg=FG_TEXT, bd=0, font=("Arial", 10), width=5, height=2,
+                              activebackground=CLOSE_HOVER, activeforeground="white", command=self.quit)
+        close_btn.pack(side="right")
+        close_btn.bind("<Enter>", lambda e: close_btn.config(bg=CLOSE_HOVER))
+        close_btn.bind("<Leave>", lambda e: close_btn.config(bg=BG_PANEL))
+
+        self.max_btn = tk.Button(self.title_bar, text="🗖", bg=BG_PANEL, fg=FG_TEXT, bd=0, font=("Arial", 10), width=5, height=2,
+                                 activebackground=BORDER_COLOR, activeforeground=FG_TEXT, command=self.toggle_maximize)
+        self.max_btn.pack(side="right")
+
+        min_btn = tk.Button(self.title_bar, text="🗕", bg=BG_PANEL, fg=FG_TEXT, bd=0, font=("Arial", 10), width=5, height=2,
+                             activebackground=BORDER_COLOR, activeforeground=FG_TEXT, command=self.minimize_window)
+        min_btn.pack(side="right")
+
+        # Бинды для перетаскивания окна за заголовок
+        self.title_bar.bind("<Button-1>", self.start_drag)
+        self.title_bar.bind("<B1-Motion>", self.拖动_drag)
+        title_label.bind("<Button-1>", self.start_drag)
+        title_label.bind("<B1-Motion>", self.拖动_drag)
+
+    def start_drag(self, event):
+        self._drag_data["x"] = event.x
+        self._drag_data["y"] = event.y
+
+    def 拖动_drag(self, event):
+        if self._is_maximized:
+            return
+        x = self.winfo_x() - self._drag_data["x"] + event.x
+        y = self.winfo_y() - self._drag_data["y"] + event.y
+        self.geometry(f"+{x}+{y}")
+
+    def toggle_maximize(self):
+        if self._is_maximized:
+            self.geometry("1200x750")
+            self.max_btn.config(text="🗖")
+            self._is_maximized = False
+        else:
+            self.state('zoomed')
+            self.max_btn.config(text="🗗")
+            self._is_maximized = True
+
+    def minimize_window(self):
+        self.update_idletasks()
+        self.overrideredirect(False)
+        self.iconify()
+        self.bind("<FocusIn>", self.restore_borderless)
+
+    def restore_borderless(self, event):
+        self.unbind("<FocusIn>")
+        self.overrideredirect(True)
 
     def init_main_ui(self):
-        self.top_bar = ttk.Frame(self, padding=10, style="TopBar.TFrame")
+        # Постоянно видимая верхняя панель управления с системными кнопками Файла
+        self.top_bar = ttk.Frame(self, padding=5, style="TopBar.TFrame")
         self.top_bar.pack(fill="x", side="top")
 
-        self.lbl_status = ttk.Label(
-            self.top_bar,
-            text="Файл не выбран. Откройте CSV через меню (Ctrl+O)",
-            font=("Arial", 10, "italic"),
-            style="Status.TLabel"
+        # Кнопки операций с файлами (теперь всегда на виду!)
+        self.btn_open = tk.Button(
+            self.top_bar, text="Открыть CSV (Ctrl+O)", command=self.open_file,
+            bg=BG_CARD, fg=FG_TEXT, relief="solid", bd=1, highlightthickness=0, padx=10, pady=4, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
         )
-        self.lbl_status.pack(side="left", anchor="w", pady=5)
+        self.btn_open.pack(side="left", padx=5)
 
+        self.btn_save = tk.Button(
+            self.top_bar, text="Сохранить (Ctrl+S)", command=self.save_file,
+            bg=BG_CARD, fg=FG_TEXT, relief="solid", bd=1, highlightthickness=0, padx=10, pady=4, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
+        )
+        self.btn_save.pack(side="left", padx=5)
+
+        # Кнопки динамических действий (пакуются справа по требованию)
         self.btn_change_col = tk.Button(
             self.top_bar, text="Сменить колонку доски", command=self.choose_kanban_column,
-            bg=BG_CARD, fg=FG_TEXT, relief="solid", bd=1, highlightthickness=0, padx=10, pady=5, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
+            bg=BG_CARD, fg=FG_TEXT, relief="solid", bd=1, highlightthickness=0, padx=10, pady=4, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
         )
         
         self.btn_add_card = tk.Button(
             self.top_bar, text="+ Добавить запись", command=self.add_new_card,
-            bg=ACCENT_COLOR, fg="white", relief="flat", bd=0, padx=12, pady=5, font=("Arial", 9, "bold"), activebackground="#0062a3", activeforeground="white"
+            bg=ACCENT_COLOR, fg="white", relief="flat", bd=0, padx=12, pady=4, font=("Arial", 9, "bold"), activebackground="#0062a3", activeforeground="white"
         )
 
-        self.main_container = ttk.Frame(self)
-        # ИСПРАВЛЕНО: строго прописаны padx и pady
-        self.main_container.pack(fill="both", expand=True, padx=5, pady=5)
-
-        self.board_canvas = tk.Canvas(self.main_container, borderwidth=0, highlightthickness=0, bg=BG_MAIN)
-        self.h_scrollbar = ttk.Scrollbar(
-            self.main_container, orient="horizontal", command=self.board_canvas.xview
+        # Строка статуса/информации о файле
+        self.lbl_status = ttk.Label(
+            self.top_bar, text="Файл не загружен.", font=("Arial", 9, "italic"), style="Status.TLabel"
         )
-        self.v_scrollbar = ttk.Scrollbar(
-            self.main_container, orient="vertical", command=self.board_canvas.yview
-        )
+        self.lbl_status.pack(side="left", padx=15)
 
-        self.board_frame = tk.Frame(self.board_canvas, bg=BG_MAIN)
-        self.board_frame.bind(
-            "<Configure>",
-            lambda e: self.board_canvas.configure(scrollregion=self.board_canvas.bbox("all")),
-        )
+        # Контейнер для адаптивной Канбан-доски (Grid-основа для масштабирования)
+        self.main_container = tk.Frame(self, bg=BG_MAIN)
+        self.main_container.pack(fill="both", expand=True, padx=8, pady=8)
 
-        self.board_canvas.create_window((0, 0), window=self.board_frame, anchor="nw")
-        self.board_canvas.configure(
-            xscrollcommand=self.h_scrollbar.set, yscrollcommand=self.v_scrollbar.set
-        )
-
-        self.h_scrollbar.pack(side="bottom", fill="x")
-        self.v_scrollbar.pack(side="right", fill="y")
-        self.board_canvas.pack(side="left", fill="both", expand=True)
+        # Бинды горячих клавиш
+        self.bind_all("<Control-o>", lambda e: self.open_file())
+        self.bind_all("<Control-s>", lambda e: self.save_file())
 
     def open_file(self):
-        file_path = filedialog.askopenfilename(
-            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
-        )
+        file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")])
         if not file_path:
             return
 
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
-            
             if not lines:
-                raise ValueError("Файл абсолютно пустой.")
+                raise ValueError("Файл пустой.")
 
             first_line = lines[0]
-            
             possible_delimiters = [';', ',', '\t']
             detected_delimiter = ','
             max_count = -1
-            
             for d in possible_delimiters:
                 count = first_line.count(d)
                 if count > max_count:
@@ -220,7 +260,7 @@ class KanbanCSVApp(tk.Tk):
                 self.data = list(reader)
 
             if not self.headers:
-                raise ValueError("Не удалось определить заголовки полей.")
+                raise ValueError("Не удалось определить заголовки.")
 
             self.file_path = file_path
             
@@ -228,9 +268,7 @@ class KanbanCSVApp(tk.Tk):
                 delimiter = detected_delimiter
             self.csv_dialect = CustomDialect
             
-            self.lbl_status.config(
-                text=f"Файл: {os.path.basename(file_path)} | Строк: {len(self.data)} | Разделитель: {repr(detected_delimiter)}"
-            )
+            self.lbl_status.config(text=f"Выбран: {os.path.basename(file_path)} | Строк: {len(self.data)}")
             
             self.btn_change_col.pack(side="right", padx=5)
             self.btn_add_card.pack(side="right", padx=5)
@@ -238,7 +276,7 @@ class KanbanCSVApp(tk.Tk):
             self.choose_kanban_column()
 
         except Exception as e:
-            messagebox.showerror("Ошибка парсинга CSV", f"Не удалось прочитать структуру файла:\n{str(e)}")
+            messagebox.showerror("Ошибка парсинга CSV", f"Не удалось прочитать файл:\n{str(e)}")
 
     def choose_kanban_column(self):
         win = tk.Toplevel(self)
@@ -248,10 +286,7 @@ class KanbanCSVApp(tk.Tk):
         win.transient(self)
         win.grab_set()
 
-        tk.Label(
-            win, text="Выберите колонку для Канбан-доски:", justify="center", bg=BG_MAIN, fg=FG_TEXT
-        ).pack(pady=15)
-        
+        tk.Label(win, text="Выберите колонку для распределения:", bg=BG_MAIN, fg=FG_TEXT).pack(pady=15)
         combo = ttk.Combobox(win, values=self.headers, state="readonly")
         combo.pack(padx=20, pady=5, fill="x")
         
@@ -265,10 +300,7 @@ class KanbanCSVApp(tk.Tk):
             win.destroy()
             self.build_board()
 
-        tk.Button(
-            win, text="Построить доску", command=confirm,
-            bg=ACCENT_COLOR, fg="white", relief="flat", bd=0, padx=15, pady=6, activebackground="#0062a3", activeforeground="white"
-        ).pack(pady=15)
+        tk.Button(win, text="Построить доску", command=confirm, bg=ACCENT_COLOR, fg="white", relief="flat", bd=0, padx=15, pady=6).pack(pady=15)
         
         win.update_idletasks()
         x = self.winfo_x() + (self.winfo_width() // 2) - (win.winfo_width() // 2)
@@ -276,7 +308,8 @@ class KanbanCSVApp(tk.Tk):
         win.geometry(f"+{x}+{y}")
 
     def build_board(self):
-        for child in self.board_frame.winfo_children():
+        # Очищаем контейнер
+        for child in self.main_container.winfo_children():
             child.destroy()
 
         if not self.kanban_column:
@@ -292,19 +325,42 @@ class KanbanCSVApp(tk.Tk):
             sorted_values.remove("")
             sorted_values.append("")
 
+        num_columns = len(sorted_values)
+
+        # Конфигурируем Grid-адаптивность: раздаем колонкам равный вес
+        for col_idx in range(num_columns):
+            self.main_container.grid_columnconfigure(col_idx, weight=1, uniform="equal_cols")
+        self.main_container.grid_rowconfigure(0, weight=1)
+
         for col_idx, col_value in enumerate(sorted_values):
             col_title = col_value if col_value else "[Пусто]"
 
-            col_frame = tk.Frame(self.board_frame, bg=BG_PANEL, bd=1, relief="solid", highlightbackground=BORDER_COLOR)
-            col_frame.grid(row=0, column=col_idx, padx=8, pady=8, sticky="nsew")
+            col_frame = tk.Frame(self.main_container, bg=BG_PANEL, bd=1, relief="solid", highlightbackground=BORDER_COLOR)
+            col_frame.grid(row=0, column=col_idx, padx=4, pady=4, sticky="nsew")
 
-            col_header = tk.Label(
-                col_frame, text=col_title.upper(), bg=BG_PANEL, fg=FG_TEXT, font=("Arial", 10, "bold"), pady=6
-            )
+            col_header = tk.Label(col_frame, text=col_title.upper(), bg=BG_PANEL, fg=FG_TEXT, font=("Arial", 10, "bold"), pady=6)
             col_header.pack(fill="x")
 
-            cards_frame = tk.Frame(col_frame, bg=BG_PANEL)
-            cards_frame.pack(fill="both", expand=True, padx=4, pady=4)
+            # Внедряем скроллинг внутрь КАЖДОЙ колонки для длинных списков карточек
+            canvas = tk.Canvas(col_frame, bg=BG_PANEL, borderwidth=0, highlightthickness=0)
+            canvas.pack(fill="both", expand=True)
+
+            cards_frame = tk.Frame(canvas, bg=BG_PANEL)
+            canvas.create_window((0, 0), window=cards_frame, anchor="nw")
+
+            # Автоматическая корректировка ширины прокручиваемой зоны под размер колонки
+            def _configure_canvas(e, c=canvas, f=cards_frame):
+                c.configure(scrollregion=c.bbox("all"))
+                c.itemconfigure(1, width=e.width)
+
+            canvas.bind("<Configure>", _configure_canvas)
+            cards_frame.bind("<Configure>", lambda e, c=canvas: c.configure(scrollregion=c.bbox("all")))
+
+            # Поддержка колесика мыши при наведении на колонку
+            def _on_mousewheel(event, c=canvas):
+                c.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            canvas.bind("<Enter>", lambda e, c=canvas: self.bind_all("<MouseWheel>", _on_mousewheel))
+            canvas.bind("<Leave>", lambda e: self.unbind_all("<MouseWheel>"))
 
             has_cards = False
             for row_dict in self.data:
@@ -313,39 +369,30 @@ class KanbanCSVApp(tk.Tk):
                     self.create_card(cards_frame, row_dict)
                     has_cards = True
             
-            col_frame.config(width=280)
             if not has_cards:
                 placeholder = tk.Label(cards_frame, text="(Нет записей)", fg=FG_MUTED, bg=BG_PANEL, font=("Arial", 9, "italic"), pady=15)
-                placeholder.pack()
+                placeholder.pack(fill="x")
 
         self.update_idletasks()
-        self.board_canvas.configure(scrollregion=self.board_canvas.bbox("all"))
 
     def create_card(self, parent, row_dict):
-        card = tk.Frame(
-            parent, bg=BG_CARD, bd=1, relief="solid", cursor="hand2", highlightbackground=BORDER_COLOR
-        )
+        card = tk.Frame(parent, bg=BG_CARD, bd=1, relief="solid", cursor="hand2", highlightbackground=BORDER_COLOR)
         card.pack(fill="x", padx=5, pady=5, anchor="n")
 
         preview_text = ""
         for h in self.headers[:4]:
             val = str(row_dict.get(h, ""))
-            val_trunc = val[:30] + "..." if len(val) > 30 else val
+            val_trunc = val[:25] + "..." if len(val) > 25 else val
             preview_text += f"• {h}: {val_trunc}\n"
 
         lbl = tk.Label(
-            card,
-            text=preview_text.strip(),
-            bg=BG_CARD,
-            fg=FG_TEXT,
-            justify="left",
-            anchor="w",
-            font=("Arial", 9),
-            padx=8,
-            pady=8,
-            wraplength=240
+            card, text=preview_text.strip(), bg=BG_CARD, fg=FG_TEXT, justify="left",
+            anchor="w", font=("Arial", 9), padx=8, pady=8, wraplength=220
         )
         lbl.pack(fill="both", expand=True)
+
+        # Пересчет wraplength при изменении размеров карточки (чтобы текст не обрезался)
+        card.bind("<Configure>", lambda e, l=lbl: l.config(wraplength=max(100, e.width - 15)))
 
         def on_double_click(event, r=row_dict):
             self.edit_row(r)
@@ -356,7 +403,6 @@ class KanbanCSVApp(tk.Tk):
     def edit_row(self, row_dict):
         dialog = EditCardDialog(self, row_dict, self.headers, is_new=False)
         self.wait_window(dialog)
-
         if dialog.result:
             row_dict.update(dialog.result)
             self.build_board()
@@ -364,9 +410,7 @@ class KanbanCSVApp(tk.Tk):
     def add_new_card(self):
         if not self.file_path:
             return
-            
         new_row_template = {h: "" for h in self.headers}
-        
         if self.kanban_column:
             unique_vals = list(set(str(r.get(self.kanban_column, "")).strip() for r in self.data))
             if unique_vals:
@@ -374,30 +418,23 @@ class KanbanCSVApp(tk.Tk):
 
         dialog = EditCardDialog(self, new_row_template, self.headers, is_new=True)
         self.wait_window(dialog)
-
         if dialog.result:
             self.data.append(dialog.result)
-            self.lbl_status.config(
-                text=f"Файл: {os.path.basename(self.file_path)} | Строк: {len(self.data)} | Разделитель: {repr(self.csv_dialect.delimiter)}"
-            )
+            self.lbl_status.config(text=f"Выбран: {os.path.basename(self.file_path)} | Строк: {len(self.data)}")
             self.build_board()
 
     def save_file(self):
         if not self.file_path:
             messagebox.showwarning("Внимание", "Нет открытого файла для сохранения.")
             return
-
         try:
             with open(self.file_path, "w", encoding="utf-8", newline="") as f:
-                writer = csv.DictWriter(
-                    f, fieldnames=self.headers, dialect=self.csv_dialect
-                )
+                writer = csv.DictWriter(f, fieldnames=self.headers, dialect=self.csv_dialect)
                 writer.writeheader()
                 writer.writerows(self.data)
-
-            messagebox.showinfo("Успех", "Данные успешно сохранены в файл!")
+            messagebox.showinfo("Успех", "Данные успешно сохранены!")
         except Exception as e:
-            messagebox.showerror("Ошибка保存ения", f"Не удалось сохранить файл:\n{str(e)}")
+            messagebox.showerror("Ошибка сохранения", f"Не удалось сохранить файл:\n{str(e)}")
 
 
 if __name__ == "__main__":

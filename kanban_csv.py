@@ -8,7 +8,7 @@ BG_MAIN = "#1e1e1e"        # Главный фон приложения
 BG_PANEL = "#252526"       # Фон панелей и колонок
 BG_CARD = "#2d2d30"        # Фон карточек
 FG_TEXT = "#e1e1e1"        # Основной текст
-FG_MUTED = "#858585"       # Тусклый текст (для подписей и пустых колонок)
+FG_MUTED = "#858585"       # Тусклый текст (для пустых колонок)
 ACCENT_COLOR = "#007acc"   # Акцентный синий цвет (для кнопок)
 BORDER_COLOR = "#3f3f46"   # Цвет границ
 
@@ -26,7 +26,6 @@ class EditCardDialog(tk.Toplevel):
         self.headers = headers
         self.result = None
 
-        # Стилизация Canvas под темную тему
         canvas = tk.Canvas(self, borderwidth=0, highlightthickness=0, bg=BG_MAIN)
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
         self.scrollable_frame = tk.Frame(canvas, bg=BG_MAIN)
@@ -38,7 +37,8 @@ class EditCardDialog(tk.Toplevel):
         canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        canvas.pack(side="left", fill="both", expand=True, padx=10, py=10)
+        # ИСПРАВЛЕНО: py=10 заменено на pady=10
+        canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         scrollbar.pack(side="right", fill="y")
 
         self.entries = {}
@@ -49,7 +49,6 @@ class EditCardDialog(tk.Toplevel):
             lbl = tk.Label(frame, text=header, font=("Arial", 10, "bold"), fg=FG_TEXT, bg=BG_MAIN)
             lbl.pack(anchor="w")
 
-            # Кастомное текстовое поле для соответствия темной теме
             entry = tk.Entry(
                 frame, 
                 width=45, 
@@ -66,15 +65,15 @@ class EditCardDialog(tk.Toplevel):
             entry.pack(fill="x", pady=4, ipady=4)
             self.entries[header] = entry
 
-        btn_frame = tk.Frame(self, bg=BG_PANEL, padding=10)
-        btn_frame.pack(fill="x", side="bottom")
+        # Вместо ttk используем tk.Frame для кастомного цвета фона панели кнопок
+        btn_frame = tk.Frame(self, bg=BG_PANEL, padding=10) if hasattr(tk.Frame, 'padding') else tk.Frame(self, bg=BG_PANEL)
+        btn_frame.pack(fill="x", side="bottom", ipady=5)
 
-        # Кнопки управления в диалоге
         cancel_btn = tk.Button(
             btn_frame, text="Отмена", command=self.destroy,
             bg=BG_CARD, fg=FG_TEXT, relief="flat", bd=0, padx=15, pady=5, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
         )
-        cancel_btn.pack(side="right", padx=5)
+        cancel_btn.pack(side="right", padx=10)
 
         save_btn = tk.Button(
             btn_frame, text="Сохранить", command=self.save,
@@ -111,20 +110,16 @@ class KanbanCSVApp(tk.Tk):
         self.init_main_ui()
 
     def setup_styles(self):
-        # Настройка глобальных стилей ttk под темную тему
         style = ttk.Style()
         style.theme_use("default")
         
-        # Настройка статусбара и панелей
         style.configure("TFrame", background=BG_MAIN)
         style.configure("TopBar.TFrame", background=BG_PANEL)
         style.configure("TLabel", background=BG_MAIN, foreground=FG_TEXT)
         style.configure("Status.TLabel", background=BG_PANEL, foreground=FG_TEXT)
         
-        # Стилизация выпадающего списка
         style.configure("TCombobox", fieldbackground=BG_CARD, background=BG_PANEL, foreground=FG_TEXT, arrowcolor=FG_TEXT)
         
-        # Стилизация скроллбаров
         style.configure("Vertical.TScrollbar", gripcount=0, background=BG_PANEL, darkcolor=BG_MAIN, lightcolor=BG_MAIN, troughcolor=BG_MAIN, bordercolor=BG_MAIN)
         style.configure("Horizontal.TScrollbar", gripcount=0, background=BG_PANEL, darkcolor=BG_MAIN, lightcolor=BG_MAIN, troughcolor=BG_MAIN, bordercolor=BG_MAIN)
 
@@ -146,7 +141,6 @@ class KanbanCSVApp(tk.Tk):
         self.bind("<Control-s>", lambda e: self.save_file())
 
     def init_main_ui(self):
-        # Верхняя панель управления
         self.top_bar = ttk.Frame(self, padding=10, style="TopBar.TFrame")
         self.top_bar.pack(fill="x", side="top")
 
@@ -156,9 +150,9 @@ class KanbanCSVApp(tk.Tk):
             font=("Arial", 10, "italic"),
             style="Status.TLabel"
         )
-        self.lbl_status.pack(side="left", vertical_alignment="center")
+        # ИСПРАВЛЕНО: удален некорректный параметр vertical_alignment
+        self.lbl_status.pack(side="left", anchor="w", pady=5)
 
-        # Кнопки действий (будут упакованы программно после загрузки файла)
         self.btn_change_col = tk.Button(
             self.top_bar, text="Сменить колонку доски", command=self.choose_kanban_column,
             bg=BG_CARD, fg=FG_TEXT, relief="solid", bd=1, highlightthickness=0, padx=10, pady=5, activebackground=BORDER_COLOR, activeforeground=FG_TEXT
@@ -169,7 +163,6 @@ class KanbanCSVApp(tk.Tk):
             bg=ACCENT_COLOR, fg="white", relief="flat", bd=0, padx=12, pady=5, font=("Arial", 9, "bold"), activebackground="#0062a3", activeforeground="white"
         )
 
-        # Контейнер Канбан-доски
         self.main_container = ttk.Frame(self)
         self.main_container.pack(fill="both", expand=True, padx=5, py=5)
 
@@ -240,7 +233,6 @@ class KanbanCSVApp(tk.Tk):
                 text=f"Файл: {os.path.basename(file_path)} | Строк: {len(self.data)} | Разделитель: {repr(detected_delimiter)}"
             )
             
-            # Показываем кнопки на верхней панели управления
             self.btn_change_col.pack(side="right", padx=5)
             self.btn_add_card.pack(side="right", padx=5)
             
@@ -258,8 +250,8 @@ class KanbanCSVApp(tk.Tk):
         win.grab_set()
 
         tk.Label(
-            win, text="Выберите колонку для Канбан-доски:", padding=10, justify="center", bg=BG_MAIN, fg=FG_TEXT
-        ).pack()
+            win, text="Выберите колонку для Канбан-доски:", justify="center", bg=BG_MAIN, fg=FG_TEXT
+        ).pack(pady=15)
         
         combo = ttk.Combobox(win, values=self.headers, state="readonly")
         combo.pack(padx=20, pady=5, fill="x")
@@ -304,7 +296,6 @@ class KanbanCSVApp(tk.Tk):
         for col_idx, col_value in enumerate(sorted_values):
             col_title = col_value if col_value else "[Пусто]"
 
-            # Кастомный фрейм под колонку (эмуляция LabelFrame с темным дизайном)
             col_frame = tk.Frame(self.board_frame, bg=BG_PANEL, bd=1, relief="solid", highlightbackground=BORDER_COLOR)
             col_frame.grid(row=0, column=col_idx, padx=8, pady=8, sticky="nsew")
 
@@ -352,7 +343,7 @@ class KanbanCSVApp(tk.Tk):
             anchor="w",
             font=("Arial", 9),
             padx=8,
-            py=8,
+            pady=8,
             wraplength=240
         )
         lbl.pack(fill="both", expand=True)
@@ -375,12 +366,9 @@ class KanbanCSVApp(tk.Tk):
         if not self.file_path:
             return
             
-        # Создаем пустую болванку для новой строки структуры
         new_row_template = {h: "" for h in self.headers}
         
-        # Если колонка доски выбрана, сразу подставляем её дефолтное значение из первой колонки, чтобы карточка не потерялась
         if self.kanban_column:
-            # Пытаемся взять уникальные значения, чтобы положить карточку в первый существующий столбец
             unique_vals = list(set(str(r.get(self.kanban_column, "")).strip() for r in self.data))
             if unique_vals:
                 new_row_template[self.kanban_column] = unique_vals[0]
@@ -389,13 +377,10 @@ class KanbanCSVApp(tk.Tk):
         self.wait_window(dialog)
 
         if dialog.result:
-            # Добавляем новую запись в общий массив данных
             self.data.append(dialog.result)
-            # Обновляем статусбар
             self.lbl_status.config(
                 text=f"Файл: {os.path.basename(self.file_path)} | Строк: {len(self.data)} | Разделитель: {repr(self.csv_dialect.delimiter)}"
             )
-            # Перестраиваем доску
             self.build_board()
 
     def save_file(self):

@@ -9,14 +9,13 @@ class EditCardDialog(tk.Toplevel):
     def __init__(self, parent, row_data, headers):
         super().__init__(parent)
         self.title("Редактирование записи")
-        self.geometry("400x500")
+        self.geometry("450x550")
         self.transient(parent)
         self.grab_set()
 
         self.headers = headers
         self.result = None
 
-        # Скроллбар для большого количества полей
         canvas = tk.Canvas(self, borderwidth=0, highlightthickness=0)
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
         self.scrollable_frame = ttk.Frame(canvas)
@@ -34,19 +33,18 @@ class EditCardDialog(tk.Toplevel):
         self.entries = {}
         for header in self.headers:
             frame = ttk.Frame(self.scrollable_frame)
-            frame.pack(fill="x", pady=5, expand=True)
+            frame.pack(fill="x", pady=5, padx=5)
 
             lbl = ttk.Label(frame, text=header, font=("Arial", 10, "bold"))
             lbl.pack(anchor="w")
 
-            # Используем Text для многострочности или Entry для простоты
-            entry = ttk.Entry(frame, width=40)
-            entry.insert(0, row_data.get(header, ""))
+            entry = ttk.Entry(frame, width=45)
+            entry.insert(0, str(row_data.get(header, "")))
             entry.pack(fill="x", pady=2)
             self.entries[header] = entry
 
-        btn_frame = ttk.Frame(self)
-        btn_frame.pack(fill="x", side="bottom", pady=10, padx=10)
+        btn_frame = ttk.Frame(self, padding=10)
+        btn_frame.pack(fill="x", side="bottom")
 
         ttk.Button(btn_frame, text="Отмена", command=self.destroy).pack(
             side="right", padx=5
@@ -54,6 +52,12 @@ class EditCardDialog(tk.Toplevel):
         ttk.Button(btn_frame, text="Сохранить", command=self.save).pack(
             side="right"
         )
+
+        # Центрируем модальное окно относительно главного окна
+        self.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.winfo_width() // 2)
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.winfo_height() // 2)
+        self.geometry(f"+{x}+{y}")
 
     def save(self):
         self.result = {h: self.entries[h].get() for h in self.headers}
@@ -65,11 +69,11 @@ class KanbanCSVApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("CSV Kanban Editor")
-        self.geometry("1100x700")
+        self.geometry("1200x750")
 
         self.file_path = None
         self.headers = []
-        self.data = []  # Список словарей [ {header: value, ...}, ... ]
+        self.data = []
         self.csv_dialect = None
         self.kanban_column = None
 
@@ -94,45 +98,50 @@ class KanbanCSVApp(tk.Tk):
         self.bind("<Control-s>", lambda e: self.save_file())
 
     def init_main_ui(self):
-        # Верхняя панель управления
-        self.top_bar = ttk.Frame(self, padding=10)
-        self.top_bar.pack(fill="x")
+        # Верхняя панель
+        self.top_bar = ttk.Frame(self, padding=10, relief="groove")
+        self.top_bar.pack(fill="x", side="top")
 
         self.lbl_status = ttk.Label(
-            self.top_bar, text="Файл не выбран", font=("Arial", 10, "italic")
+            self.top_bar,
+            text="Файл не выбран. Откройте CSV через Файл -> Открыть (Ctrl+O)",
+            font=("Arial", 10, "italic"),
         )
         self.lbl_status.pack(side="left")
 
-        # Контейнер для доски со скроллбарами
-        self.board_canvas = tk.Canvas(self, borderwidth=0, highlightthickness=0)
+        # Кнопка смены колонки (по умолчанию скрыта до загрузки файла)
+        self.btn_change_col = ttk.Button(
+            self.top_bar, text="Сменить колонку доски", command=self.choose_kanban_column
+        )
+
+        # Основной контейнер доски
+        self.main_container = ttk.Frame(self)
+        self.main_container.pack(fill="both", expand=True, padx=5, py=5)
+
+        self.board_canvas = tk.Canvas(self.main_container, borderwidth=0, highlightthickness=0)
         self.h_scrollbar = ttk.Scrollbar(
-            self, orient="horizontal", command=self.board_canvas.xview
+            self.main_container, orient="horizontal", command=self.board_canvas.xview
         )
         self.v_scrollbar = ttk.Scrollbar(
-            self, orient="vertical", command=self.board_canvas.yview
+            self.main_container, orient="vertical", command=self.board_canvas.yview
         )
 
         self.board_frame = ttk.Frame(self.board_canvas)
         self.board_frame.bind(
             "<Configure>",
-            lambda e: self.board_canvas.configure(
-                scrollregion=self.board_canvas.bbox("all")
-            ),
+            lambda e: self.board_canvas.configure(scrollregion=self.board_canvas.bbox("all")),
         )
 
-        self.board_canvas.create_window(
-            (0, 0), window=self.board_frame, anchor="nw"
-        )
+        self.board_canvas.create_window((0, 0), window=self.board_frame, anchor="nw")
         self.board_canvas.configure(
-            xscrollcommand=self.h_scrollbar.set,
-            yscrollcommand=self.v_scrollbar.set,
+            xscrollcommand=self.h_scrollbar.set, yscrollcommand=self.v_scrollbar.set
         )
 
         self.h_scrollbar.pack(side="bottom", fill="x")
         self.v_scrollbar.pack(side="right", fill="y")
         self.board_canvas.pack(side="left", fill="both", expand=True)
 
-def open_file(self):
+    def open_file(self):
         file_path = filedialog.askopenfilename(
             filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
         )
@@ -140,7 +149,6 @@ def open_file(self):
             return
 
         try:
-            # Читаем файл целиком, чтобы надежно определить разделитель
             with open(file_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
             
@@ -149,63 +157,61 @@ def open_file(self):
 
             first_line = lines[0]
             
-            # Вручную ищем наиболее вероятный разделитель (запятая, точка с запятой или таб)
+            # Подбираем разделитель по максимальному вхождению в первой строке
             possible_delimiters = [';', ',', '\t']
-            delimiter = ',' # по умолчанию
+            detected_delimiter = ','
             max_count = -1
             
             for d in possible_delimiters:
                 count = first_line.count(d)
                 if count > max_count:
                     max_count = count
-                    delimiter = d
+                    detected_delimiter = d
 
-            # Читаем данные заново, используя гарантированный разделитель
+            # Читаем данные заново, используя корректный разделитель
             with open(file_path, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f, delimiter=delimiter)
+                reader = csv.DictReader(f, delimiter=detected_delimiter)
                 self.headers = reader.fieldnames
                 self.data = list(reader)
 
-            # Проверяем, удалось ли вытащить заголовки
-            if not self.headers or len(self.headers) <= 1 and delimiter not in first_line:
-                # На случай, если в файле всего одна колонка без разделителей
-                if self.headers:
-                    pass
-                else:
-                    raise ValueError("Не удалось определить заголовки колонок.")
+            if not self.headers:
+                raise ValueError("Не удалось определить заголовки полей.")
 
             self.file_path = file_path
-            # Нам нужен кастомный класс диалекта для последующего сохранения с тем же разделителем
+            
+            # Сохраняем диалект для последующей перезаписи структуры
             class CustomDialect(csv.excel):
-                delimiter = d
+                delimiter = detected_delimiter
             self.csv_dialect = CustomDialect
             
-            # Обновляем статусбар
             self.lbl_status.config(
-                text=f"Файл: {os.path.basename(file_path)} | Строк: {len(self.data)} | Разделитель: {repr(delimiter)}"
+                text=f"Файл: {os.path.basename(file_path)} | Строк: {len(self.data)} | Разделитель: {repr(detected_delimiter)}"
             )
             self.btn_change_col.pack(side="right", padx=5)
             
-            # Открываем окно выбора колонки
+            # Открываем диалог выбора колонки доски
             self.choose_kanban_column()
 
         except Exception as e:
             messagebox.showerror("Ошибка парсинга CSV", f"Не удалось прочитать структуру файла:\n{str(e)}")
 
     def choose_kanban_column(self):
-        # Окно выбора колонки для построения доски
         win = tk.Toplevel(self)
         win.title("Выбор колонки")
-        win.geometry("300x150")
+        win.geometry("350x160")
         win.transient(self)
         win.grab_set()
 
         ttk.Label(
-            win, text="Выберите колонку для Канбан-доски:", padding=10
+            win, text="Выберите колонку для Канбан-доски:", padding=10, justify="center"
         ).pack()
+        
         combo = ttk.Combobox(win, values=self.headers, state="readonly")
-        combo.pack(padx=10, pady=5, fill="x")
-        if self.headers:
+        combo.pack(padx=20, pady=5, fill="x")
+        
+        if self.kanban_column in self.headers:
+            combo.set(self.kanban_column)
+        elif self.headers:
             combo.current(0)
 
         def confirm():
@@ -213,78 +219,87 @@ def open_file(self):
             win.destroy()
             self.build_board()
 
-        ttk.Button(win, text="ОК", command=confirm).pack(pady=10)
+        ttk.Button(win, text="Построить доску", command=confirm).pack(pady=15)
+        
+        # Центрируем модальное окно выбора
+        win.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() // 2) - (win.winfo_width() // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (win.winfo_height() // 2)
+        win.geometry(f"+{x}+{y}")
 
     def build_board(self):
-        # Очищаем старую доску
+        # Очищаем старую разметку
         for child in self.board_frame.winfo_children():
             child.destroy()
 
         if not self.kanban_column:
             return
 
-        # Находим все уникальные значения для колонок доски
-        unique_values = sorted(
-            list(set(str(row.get(self.kanban_column, "")).strip() for row in self.data))
-        )
-        if "" not in unique_values:
-            unique_values.append("")  # Для записей с пустым значением
+        # Находим уникальные значения для колонок
+        unique_values = set()
+        for row in self.data:
+            val = str(row.get(self.kanban_column, "")).strip()
+            unique_values.add(val)
+        
+        sorted_values = sorted(list(unique_values))
+        if "" in sorted_values:
+            sorted_values.remove("")
+            sorted_values.append("") # Пустые значения переносим в конец
 
-        # Создаем столбцы
-        for col_idx, col_value in enumerate(unique_values):
+        # Отрисовка столбцов Канбана
+        for col_idx, col_value in enumerate(sorted_values):
             col_title = col_value if col_value else "[Пусто]"
 
-            # Фрейм колонки
             col_frame = ttk.LabelFrame(
-                self.board_frame, text=f" {col_title} ", padding=5
+                self.board_frame, text=f" {col_title} ", padding=8
             )
-            col_frame.grid(row=0, column=col_idx, padx=10, py=10, sticky="nws")
+            col_frame.grid(row=0, column=col_idx, padx=8, py=8, sticky="nsew")
 
-            # Внутренний контейнер для карточек (чтобы задать ширину)
-            cards_container = ttk.Frame(col_frame, width=250)
-            cards_container.pack(fill="both", expand=True)
-            cards_container.pack_propagate(False)
+            cards_frame = ttk.Frame(col_frame)
+            cards_frame.pack(fill="both", expand=True)
 
-            # Пересобираем контейнер под контент, если он длинный (динамический ресайз высоты)
-            cards_container.config(
-                width=260, height=600
-            )  # Фиксированная ширина доски
-
-            # Заполняем карточками
-            for row_idx, row_dict in enumerate(self.data):
+            has_cards = False
+            for row_dict in self.data:
                 val = str(row_dict.get(self.kanban_column, "")).strip()
                 if val == col_value:
-                    self.create_card(cards_container, row_dict)
+                    self.create_card(cards_frame, row_dict)
+                    has_cards = True
+            
+            col_frame.config(width=280)
+            if not has_cards:
+                placeholder = ttk.Label(cards_frame, text="(Нет записей)", foreground="gray", padding=10)
+                placeholder.pack()
+
+        # Обновляем Canvas, чтобы заработали скроллбары
+        self.update_idletasks()
+        self.board_canvas.configure(scrollregion=self.board_canvas.bbox("all"))
 
     def create_card(self, parent, row_dict):
-        # Создаем визуальную карточку
         card = tk.Frame(
             parent, bg="#ffffff", bd=1, relief="solid", cursor="hand2"
         )
-        card.pack(fill="x", padx=5, pady=5)
+        card.pack(fill="x", padx=5, pady=5, anchor="n")
 
-        # Текстовое превью полей внутри карточки
         preview_text = ""
-        # Показываем первые 3 поля для компактности
+        # Показываем первые 4 поля на превью карточки
         for h in self.headers[:4]:
-            val = row_dict.get(h, "")
-            # Обрезаем слишком длинный текст
-            val_trunc = val[:25] + "..." if len(val) > 25 else val
+            val = str(row_dict.get(h, ""))
+            val_trunc = val[:30] + "..." if len(val) > 30 else val
             preview_text += f"• {h}: {val_trunc}\n"
 
         lbl = tk.Label(
             card,
-            text=preview_text,
+            text=preview_text.strip(),
             bg="#ffffff",
             justify="left",
             anchor="w",
             font=("Arial", 9),
-            padx=5,
-            py=5,
+            padx=6,
+            py=6,
+            wraplength=240
         )
         lbl.pack(fill="both", expand=True)
 
-        # Биндим двойной клик на открытие редактирования
         def on_double_click(event, r=row_dict):
             self.edit_row(r)
 
@@ -296,9 +311,7 @@ def open_file(self):
         self.wait_window(dialog)
 
         if dialog.result:
-            # Обновляем данные в памяти
             row_dict.update(dialog.result)
-            # Перестраиваем доску, так как значения (включая ключевое) могли измениться
             self.build_board()
 
     def save_file(self):
@@ -309,7 +322,6 @@ def open_file(self):
             return
 
         try:
-            # Перезаписываем файл, строго соблюдая исходный диалект
             with open(self.file_path, "w", encoding="utf-8", newline="") as f:
                 writer = csv.DictWriter(
                     f, fieldnames=self.headers, dialect=self.csv_dialect
@@ -318,7 +330,7 @@ def open_file(self):
                 writer.writerows(self.data)
 
             messagebox.showinfo(
-                "Успех", "Файл успешно сохранен с исходной структурой!"
+                "Успех", "Файл успешно сохранен!"
             )
         except Exception as e:
             messagebox.showerror(

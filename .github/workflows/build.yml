@@ -1,0 +1,32 @@
+name: Build EXE
+
+on:
+  workflow_dispatch: # Позволяет запускать сборку вручную одной кнопкой
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install PyInstaller
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --noconsole --onefile kanban_csv.py
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Kanban-CSV-Executable
+        path: dist/kanban_csv.exe

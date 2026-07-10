@@ -12,9 +12,7 @@ BG_MAIN = "#1e1e1e"
 BG_PANEL = "#252526"
 BG_CARD = "#2d2d30"
 FG_TEXT = "#e1e1e1"
-FG_MUTED = "#858585"
 BORDER_COLOR = "#3f3f46"
-
 PAGE_SIZE = 25
 
 FONT_TITLE = ("Arial", 18, "bold")
@@ -23,6 +21,18 @@ FONT_TEXT_BOLD = ("Arial", 15, "bold")
 FONT_MAIN = ("Arial", 16)
 FONT_CARD = ("Arial", 15)
 FONT_MUTED_ITALIC = ("Arial", 16, "italic")
+
+
+class AutoHideScrollbar(ctk.CTkScrollbar):
+    def set(self, low, high):
+        if float(low) <= 0.0 and float(high) >= 1.0:
+            self.pack_forget()
+        else:
+            if self.cget("orientation") == "vertical":
+                self.pack(side="right", fill="y")
+            else:
+                self.pack(side="bottom", fill="x")
+        super().set(low, high)
 
 
 class KanbanCSVApp(ctk.CTk):
@@ -49,9 +59,16 @@ class KanbanCSVApp(ctk.CTk):
         width, height = 1850, 1000
         self.geometry(f"{width}x{height}+{(screen_w-width)//2}+{(screen_h-height)//2}")
         
-        self.bind_all("<Control-v>", self.global_paste)
-        self.bind_all("<Control-c>", self.global_copy)
-        self.bind_all("<Control-a>", self.global_select_all)
+        self.bind_all("<Control-Key-v>", self.global_paste)
+        self.bind_all("<Control-Key-V>", self.global_paste)
+        self.bind_all("<Control-Key-c>", self.global_copy)
+        self.bind_all("<Control-Key-C>", self.global_copy)
+        self.bind_all("<Control-Key-a>", self.global_select_all)
+        self.bind_all("<Control-Key-A>", self.global_select_all)
+        
+        self.bind_all("<Control-KeyPress-244>", self.global_paste) 
+        self.bind_all("<Control-KeyPress-241>", self.global_copy)  
+        self.bind_all("<Control-KeyPress-245>", self.global_select_all) 
 
     def init_main_ui(self):
         self.top_bar = ctk.CTkFrame(self, fg_color=BG_PANEL, corner_radius=0, height=65)
@@ -65,7 +82,6 @@ class KanbanCSVApp(ctk.CTk):
         self.btn_save.pack(side="left", padx=5)
 
         self.btn_change_col = ctk.CTkButton(self.top_bar, text="Настройка колонок", command=self.setup_kanban_columns_dialog, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=190, height=45)
-        
         self.btn_add_card = ctk.CTkButton(self.top_bar, text="+ Добавить запись", command=self.add_new_card, font=FONT_TEXT_BOLD, fg_color="#007acc", text_color="white", width=190, height=45)
 
         self.lbl_status = ctk.CTkLabel(self.top_bar, text="Файлы не загружены.", font=FONT_MUTED_ITALIC, text_color=FG_TEXT)
@@ -94,34 +110,67 @@ class KanbanCSVApp(ctk.CTk):
         self.bind_all("<Control-o>", lambda e: self.open_file())
         self.bind_all("<Control-s>", lambda e: self.save_file())
 
-    def global_paste(self, event):
+    def get_target_text_widget(self):
         w = self.focus_get()
-        if isinstance(w, (tk.Entry, tk.Text)) or 'entry' in str(type(w)).lower() or 'textbox' in str(type(w)).lower():
+        if not w: return None
+        if isinstance(w, (tk.Entry, tk.Text)): return w
+        if hasattr(w, "_entry"): return w._entry
+        if hasattr(w, "_textbox"): return w._textbox
+        if 'entry' in str(type(w)).lower() or 'textbox' in str(type(w)).lower(): return w
+        return None
+
+    def global_paste(self, event):
+        w = self.get_target_text_widget()
+        if w:
             try:
                 text = self.clipboard_get()
-                if not text: return
-                if hasattr(w, "insert"):
-                    if 'textbox' in str(type(w)).lower() or isinstance(w, tk.Text):
-                        w.insert(tk.INSERT, text)
-                    else:
-                        w.insert(tk.INSERT, text)
+                if text:
+                    w.insert(tk.INSERT, text)
             except: pass
             return "break"
 
     def global_copy(self, event):
-        w = self.focus_get()
-        if isinstance(w, (tk.Entry, tk.Text)) or 'entry' in str(type(w)).lower() or 'textbox' in str(type(w)).lower():
-            return
+        w = self.get_target_text_widget()
+        if w:
+            try:
+                if isinstance(w, tk.Text) or 'text' in str(type(w)).lower():
+                    text = w.get("sel.first", "sel.last")
+                else:
+                    text = w.selection_get() if hasattr(w, "selection_get") else w.get()
+                if text:
+                    self.clipboard_clear()
+                    self.clipboard_append(text)
+            except: pass
+            return "break"
 
     def global_select_all(self, event):
-        w = self.focus_get()
-        if 'entry' in str(type(w)).lower():
-            w.select_range(0, tk.END)
-            w.icursor(tk.END)
+        w = self.get_target_text_widget()
+        if w:
+            if isinstance(w, tk.Text) or 'text' in str(type(w)).lower():
+                w.tag_add("sel", "1.0", "end")
+            elif hasattr(w, "select_range"):
+                w.select_range(0, tk.END)
+                w.icursor(tk.END)
             return "break"
-        elif 'textbox' in str(type(w)).lower() or isinstance(w, tk.Text):
-            w.tag_add("sel", "1.0", "end")
-            return "break"
+
+    def show_context_menu(self, event, widget):
+        menu = tk.Menu(self, tearoff=0, bg=BG_PANEL, fg=FG_TEXT, selectcolor="#007acc")
+        
+        def do_cut():
+            self.global_copy(None)
+            try:
+                if isinstance(widget, tk.Text) or 'text' in str(type(widget)).lower():
+                    widget.delete("sel.first", "sel.last")
+                else:
+                    widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
+            except: pass
+                
+        menu.add_command(label="Вырезать", command=do_cut)
+        menu.add_command(label="Копировать", command=lambda: self.global_copy(None))
+        menu.add_command(label="Вставить", command=lambda: self.global_paste(None))
+        menu.add_separator()
+        menu.add_command(label="Выделить всё", command=lambda: self.global_select_all(None))
+        menu.tk_popup(event.x_root, event.y_root)
 
     def open_file(self):
         fp = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
@@ -142,15 +191,23 @@ class KanbanCSVApp(ctk.CTk):
             class Dialect(csv.excel): delimiter = dlm
             
             self.tab_control.add(title)
-            scr = ctk.CTkScrollableFrame(self.tab_control.tab(title), fg_color=BG_MAIN, orientation="horizontal")
-            scr.pack(fill="both", expand=True)
-            cnt = ctk.CTkFrame(scr, fg_color=BG_MAIN)
-            cnt.pack(fill="both", expand=True)
+            root_tab = self.tab_control.tab(title)
+            canvas = tk.Canvas(root_tab, bg=BG_MAIN, highlightthickness=0)
+            h_scroll = AutoHideScrollbar(root_tab, orientation="horizontal", command=canvas.xview)
+            canvas.configure(xscrollcommand=h_scroll.set)
+            
+            h_scroll.pack(side="bottom", fill="x")
+            canvas.pack(side="top", fill="both", expand=True)
+            
+            cnt = ctk.CTkFrame(canvas, fg_color=BG_MAIN)
+            canvas.create_window((0, 0), window=cnt, anchor="nw")
+            
+            cnt.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
             
             self.tabs_data[title] = {
                 "file_path": fp, "headers": headers, "data": data, "csv_dialect": Dialect,
                 "kanban_column": None, "text_column": None, "column_pages": {}, 
-                "column_data_map": {}, "container": cnt, "scroll_root": scr
+                "column_data_map": {}, "container": cnt, "scroll_root": canvas
             }
             self.tab_control.set(title)
             self.on_tab_changed()
@@ -214,22 +271,34 @@ class KanbanCSVApp(ctk.CTk):
         keys = sorted(d["column_data_map"].keys())
         for i, v in enumerate(keys):
             c.grid_columnconfigure(i, weight=0, minsize=380)
-            f = ctk.CTkFrame(c, fg_color=BG_PANEL, border_color=BORDER_COLOR, border_width=1, width=370, height=800)
+            f = ctk.CTkFrame(c, fg_color=BG_PANEL, border_color=BORDER_COLOR, border_width=1, width=370, height=830)
             f.grid(row=0, column=i, padx=5, pady=5, sticky="nsew")
             f.pack_propagate(False)
             
             ctk.CTkLabel(f, text=f"{v.upper()} ({len(d['column_data_map'][v])})", font=FONT_HEADER, fg_color="transparent").pack(pady=10)
-            sf = ctk.CTkScrollableFrame(f, fg_color=BG_PANEL, corner_radius=0)
-            sf.pack(fill="both", expand=True)
+            
+            col_canvas = tk.Canvas(f, bg=BG_PANEL, highlightthickness=0)
+            v_scroll = AutoHideScrollbar(f, orientation="vertical", command=col_canvas.yview)
+            col_canvas.configure(yscrollcommand=v_scroll.set)
+            
+            v_scroll.pack(side="right", fill="y")
+            col_canvas.pack(side="left", fill="both", expand=True)
+            
+            sf = ctk.CTkFrame(col_canvas, fg_color=BG_PANEL, corner_radius=0)
+            col_canvas.create_window((0,0), window=sf, anchor="nw")
+            
+            sf.bind("<Configure>", lambda e, cv=col_canvas, sff=sf: [cv.itemconfigure(cv.find_withtag("all")[0], width=cv.winfo_width()), cv.configure(scrollregion=cv.bbox("all"))])
+            f.bind("<Configure>", lambda e, cv=col_canvas: cv.configure(scrollregion=cv.bbox("all")))
             
             d["column_pages"][v] = PAGE_SIZE
             
-            if hasattr(sf, "_parent_canvas") and hasattr(sf, "_scrollbar"):
-                sf._parent_canvas.bind("<Configure>", lambda e, f_target=sf: self.fix_scroll(f_target), add="+")
-            
-            def sl(v=v, sf=sf):
-                if hasattr(sf, "_canvas") and sf._canvas.yview()[1] >= 0.9: self.load_more(v, sf)
-            if hasattr(sf, "_canvas"): sf._canvas.bind("<MouseWheel>", lambda e, sl=sl: [sf._on_mousewheel(e), sl()], add="+")
+            def bind_mouse(canvas_target):
+                canvas_target.bind_all("<MouseWheel>", lambda e: canvas_target.yview_scroll(int(-1 * (e.delta / 120)), "units"))
+            def unbind_mouse(canvas_target):
+                canvas_target.unbind_all("<MouseWheel>")
+                
+            col_canvas.bind("<Enter>", lambda e, cv=col_canvas: bind_mouse(cv))
+            col_canvas.bind("<Leave>", lambda e, cv=col_canvas: unbind_mouse(cv))
             
             self.render_chunk(v, sf, 0, PAGE_SIZE)
 
@@ -245,25 +314,6 @@ class KanbanCSVApp(ctk.CTk):
             lbl.pack(fill="both", padx=10, pady=10)
             
             for w in [card, lbl]: w.bind("<Double-1>", lambda e, r=r: self.load_editor(r))
-        
-        self.update_idletasks()
-        self.fix_scroll(sf)
-
-    def fix_scroll(self, sf):
-        if hasattr(sf, "_parent_canvas") and hasattr(sf, "_scrollbar"):
-            sf.update_idletasks()
-            y = sf._parent_canvas.yview()
-            if y[0] <= 0.0 and y[1] >= 1.0:
-                sf._scrollbar.pack_forget()
-            else:
-                sf._scrollbar.pack(side="right", fill="y")
-
-    def load_more(self, v, sf):
-        d = self.tabs_data[self.active_tab]
-        curr = d["column_pages"][v]
-        if curr < len(d["column_data_map"][v]):
-            d["column_pages"][v] += PAGE_SIZE
-            self.render_chunk(v, sf, curr, curr + PAGE_SIZE)
 
     def show_editor_placeholder(self):
         for w in self.right_editor_frame.winfo_children(): w.destroy()
@@ -275,31 +325,46 @@ class KanbanCSVApp(ctk.CTk):
         self.current_editing_row = row; d = self.tabs_data[self.active_tab]
         
         ctk.CTkLabel(self.right_editor_frame, text="Запись", font=FONT_TITLE).pack(pady=10)
-        sf = ctk.CTkScrollableFrame(self.right_editor_frame, fg_color=BG_PANEL)
-        sf.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        editor_canvas = tk.Canvas(self.right_editor_frame, bg=BG_PANEL, highlightthickness=0)
+        ed_scroll = AutoHideScrollbar(self.right_editor_frame, orientation="vertical", command=editor_canvas.yview)
+        editor_canvas.configure(yscrollcommand=ed_scroll.set)
+        
+        ed_scroll.pack(side="right", fill="y")
+        editor_canvas.pack(side="left", fill="both", expand=True)
+        
+        sf = ctk.CTkFrame(editor_canvas, fg_color=BG_PANEL)
+        editor_canvas.create_window((0,0), window=sf, anchor="nw", width=480)
+        
+        sf.bind("<Configure>", lambda e: editor_canvas.configure(scrollregion=editor_canvas.bbox("all")))
         
         self.editor_widgets = {}
         st_list = sorted(list(set(str(r.get(d["kanban_column"], "")).strip() for r in d["data"] if r.get(d["kanban_column"], ""))))
 
         for h in d["headers"]:
             f = ctk.CTkFrame(sf, fg_color=BG_PANEL)
-            f.pack(fill="x", pady=5)
+            f.pack(fill="x", pady=5, padx=10)
             ctk.CTkLabel(f, text=h, font=FONT_HEADER).pack(anchor="w")
             
             if h == d["kanban_column"]:
                 w = ctk.CTkComboBox(f, values=[""] + st_list, font=FONT_MAIN, height=40)
                 w.set(" " if is_new else str(row.get(h, "")))
+                target_w = w._entry
             elif h == d["text_column"]:
                 w = ctk.CTkTextbox(f, font=FONT_MAIN, height=180, border_width=1)
                 w.insert("1.0", str(row.get(h, "")))
+                target_w = w._textbox
             else:
                 w = ctk.CTkEntry(f, font=FONT_MAIN, height=40)
                 w.insert(0, str(row.get(h, "")))
+                target_w = w._entry
+                
             w.pack(fill="x", pady=2)
             self.editor_widgets[h] = w
+            target_w.bind("<Button-3>", lambda event, tw=target_w: self.show_context_menu(event, tw))
 
-        bf = ctk.CTkFrame(self.right_editor_frame, fg_color=BG_PANEL)
-        bf.pack(fill="x", side="bottom", pady=20)
+        bf = ctk.CTkFrame(self.right_editor_frame, fg_color=BG_PANEL, height=60)
+        bf.pack(fill="x", side="bottom", pady=10)
         ctk.CTkButton(bf, text="Отмена", command=self.show_editor_placeholder, width=120).pack(side="right", padx=10)
         ctk.CTkButton(bf, text="Сохранить", command=lambda: self.save_edit(is_new), fg_color="#007acc", width=120).pack(side="right")
 

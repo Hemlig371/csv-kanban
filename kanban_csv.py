@@ -4,7 +4,6 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
-# --- Конфигурация темы и цвета ---
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
@@ -17,7 +16,6 @@ BORDER_COLOR = "#3f3f46"
 
 PAGE_SIZE = 25
 
-# --- Пропорционально увеличенные шрифты (~15%) ---
 FONT_TITLE = ("Arial", 18, "bold")
 FONT_HEADER = ("Arial", 16, "bold")
 FONT_TEXT_BOLD = ("Arial", 15, "bold")
@@ -33,7 +31,6 @@ class KanbanCSVApp(ctk.CTk):
         self.title("CSV Kanban Editor Pro")
         self.configure(fg_color=BG_MAIN)
 
-        # Реестр сессий вкладок
         self.tabs_data = {}
         self.active_tab = None
 
@@ -47,7 +44,6 @@ class KanbanCSVApp(ctk.CTk):
         self.geometry(f"{width}x{height}+{max(0, x)}+{max(0, y)}")
 
     def init_main_ui(self):
-        # --- Верхняя панель ---
         self.top_bar = ctk.CTkFrame(self, fg_color=BG_PANEL, corner_radius=0, height=65)
         self.top_bar.pack(fill="x", side="top")
         self.top_bar.pack_propagate(False)
@@ -85,21 +81,17 @@ class KanbanCSVApp(ctk.CTk):
             fg_color="#a83232", text_color="white", hover_color="#822525", width=160, height=40
         )
 
-        # --- Рабочая область (Разделение на Доску и Редактор) ---
         self.work_area = ctk.CTkFrame(self, fg_color=BG_MAIN, corner_radius=0)
         self.work_area.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # Правая часть — Фиксированный монолитный редактор
         self.right_editor_frame = ctk.CTkFrame(self.work_area, fg_color=BG_PANEL, width=520, border_color=BORDER_COLOR, border_width=1, corner_radius=8)
         self.right_editor_frame.pack(side="right", fill="y", padx=5, pady=5)
         self.right_editor_frame.pack_propagate(False)
 
-        # Левая часть — Пространство под доски
         self.left_frame = ctk.CTkFrame(self.work_area, fg_color=BG_MAIN, corner_radius=0)
         self.left_frame.pack(side="left", fill="both", expand=True)
 
         self.tab_control = ctk.CTkTabview(self.left_frame, fg_color=BG_MAIN, command=self.on_tab_changed)
-        # Увеличиваем шрифт самих вкладок сверху
         self.tab_control._segmented_button.configure(font=FONT_MAIN)
         self.tab_control.pack(fill="both", expand=True)
 
@@ -112,8 +104,6 @@ class KanbanCSVApp(ctk.CTk):
 
         self.bind_all("<Control-o>", lambda e: self.open_file())
         self.bind_all("<Control-s>", lambda e: self.save_file())
-
-    # --- Управление вкладками ---
 
     def open_file(self):
         file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")])
@@ -196,6 +186,13 @@ class KanbanCSVApp(ctk.CTk):
         target_to_close = self.active_tab
         
         if messagebox.askyesno("Закрыть вкладку", f"Вы уверены, что хотите закрыть вкладку '{target_to_close}'?\nНесохраненные изменения будут потеряны."):
+            if target_to_close in self.tabs_data:
+                t_data = self.tabs_data[target_to_close]
+                if "container" in t_data and t_data["container"]:
+                    t_data["container"].destroy()
+                if "scroll_root" in t_data and t_data["scroll_root"]:
+                    t_data["scroll_root"].destroy()
+            
             self.tab_control.delete(target_to_close)
             del self.tabs_data[target_to_close]
             self.on_tab_changed()
@@ -239,8 +236,6 @@ class KanbanCSVApp(ctk.CTk):
         x = self.winfo_x() + (self.winfo_width() // 2) - (w // 2)
         y = self.winfo_y() + (self.winfo_height() // 2) - (h // 2)
         win.geometry(f"{w}x{h}+{max(0, x)}+{max(0, y)}")
-
-    # --- Логика Канбан-доски ---
 
     def build_board(self):
         if not self.active_tab: return
@@ -355,8 +350,6 @@ class KanbanCSVApp(ctk.CTk):
         t_data["column_pages"][col_value] = next_limit
         
         self.render_cards_chunk(col_value, target_frame, current_limit, next_limit)
-
-    # --- Боковая панель редактирования ---
 
     def show_editor_placeholder(self):
         for child in self.right_editor_frame.winfo_children():

@@ -24,6 +24,7 @@ FONT_MAIN = ("Arial", 16)
 FONT_CARD = ("Arial", 15)
 FONT_MUTED_ITALIC = ("Arial", 16, "italic")
 
+
 class KanbanCSVApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -47,6 +48,10 @@ class KanbanCSVApp(ctk.CTk):
         screen_h = self.winfo_screenheight()
         width, height = 1850, 1000
         self.geometry(f"{width}x{height}+{(screen_w-width)//2}+{(screen_h-height)//2}")
+        
+        self.bind_all("<Control-v>", self.global_paste)
+        self.bind_all("<Control-c>", self.global_copy)
+        self.bind_all("<Control-a>", self.global_select_all)
 
     def init_main_ui(self):
         self.top_bar = ctk.CTkFrame(self, fg_color=BG_PANEL, corner_radius=0, height=65)
@@ -88,6 +93,35 @@ class KanbanCSVApp(ctk.CTk):
 
         self.bind_all("<Control-o>", lambda e: self.open_file())
         self.bind_all("<Control-s>", lambda e: self.save_file())
+
+    def global_paste(self, event):
+        w = self.focus_get()
+        if isinstance(w, (tk.Entry, tk.Text)) or 'entry' in str(type(w)).lower() or 'textbox' in str(type(w)).lower():
+            try:
+                text = self.clipboard_get()
+                if not text: return
+                if hasattr(w, "insert"):
+                    if 'textbox' in str(type(w)).lower() or isinstance(w, tk.Text):
+                        w.insert(tk.INSERT, text)
+                    else:
+                        w.insert(tk.INSERT, text)
+            except: pass
+            return "break"
+
+    def global_copy(self, event):
+        w = self.focus_get()
+        if isinstance(w, (tk.Entry, tk.Text)) or 'entry' in str(type(w)).lower() or 'textbox' in str(type(w)).lower():
+            return
+
+    def global_select_all(self, event):
+        w = self.focus_get()
+        if 'entry' in str(type(w)).lower():
+            w.select_range(0, tk.END)
+            w.icursor(tk.END)
+            return "break"
+        elif 'textbox' in str(type(w)).lower() or isinstance(w, tk.Text):
+            w.tag_add("sel", "1.0", "end")
+            return "break"
 
     def open_file(self):
         fp = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
@@ -189,6 +223,10 @@ class KanbanCSVApp(ctk.CTk):
             sf.pack(fill="both", expand=True)
             
             d["column_pages"][v] = PAGE_SIZE
+            
+            if hasattr(sf, "_parent_canvas") and hasattr(sf, "_scrollbar"):
+                sf._parent_canvas.bind("<Configure>", lambda e, f_target=sf: self.fix_scroll(f_target), add="+")
+            
             def sl(v=v, sf=sf):
                 if hasattr(sf, "_canvas") and sf._canvas.yview()[1] >= 0.9: self.load_more(v, sf)
             if hasattr(sf, "_canvas"): sf._canvas.bind("<MouseWheel>", lambda e, sl=sl: [sf._on_mousewheel(e), sl()], add="+")
@@ -208,13 +246,17 @@ class KanbanCSVApp(ctk.CTk):
             
             for w in [card, lbl]: w.bind("<Double-1>", lambda e, r=r: self.load_editor(r))
         
-        self.after(100, lambda: self.fix_scroll(sf))
+        self.update_idletasks()
+        self.fix_scroll(sf)
 
     def fix_scroll(self, sf):
-        if hasattr(sf, "_canvas") and hasattr(sf, "_scrollbar"):
-            y = sf._canvas.yview()
-            if y[0] == 0 and y[1] == 1: sf._scrollbar.pack_forget()
-            else: sf._scrollbar.pack(side="right", fill="y")
+        if hasattr(sf, "_parent_canvas") and hasattr(sf, "_scrollbar"):
+            sf.update_idletasks()
+            y = sf._parent_canvas.yview()
+            if y[0] <= 0.0 and y[1] >= 1.0:
+                sf._scrollbar.pack_forget()
+            else:
+                sf._scrollbar.pack(side="right", fill="y")
 
     def load_more(self, v, sf):
         d = self.tabs_data[self.active_tab]
@@ -246,7 +288,7 @@ class KanbanCSVApp(ctk.CTk):
             
             if h == d["kanban_column"]:
                 w = ctk.CTkComboBox(f, values=[""] + st_list, font=FONT_MAIN, height=40)
-                w.set("" if is_new else str(row.get(h, "")))
+                w.set(" " if is_new else str(row.get(h, "")))
             elif h == d["text_column"]:
                 w = ctk.CTkTextbox(f, font=FONT_MAIN, height=180, border_width=1)
                 w.insert("1.0", str(row.get(h, "")))
@@ -284,6 +326,7 @@ class KanbanCSVApp(ctk.CTk):
                 w.writeheader(); w.writerows(d["data"])
             messagebox.showinfo("OK", "Saved")
         except Exception as e: messagebox.showerror("Error", str(e))
+
 
 if __name__ == "__main__":
     KanbanCSVApp().mainloop()

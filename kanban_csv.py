@@ -59,16 +59,7 @@ class KanbanCSVApp(ctk.CTk):
         width, height = 1850, 1000
         self.geometry(f"{width}x{height}+{(screen_w-width)//2}+{(screen_h-height)//2}")
         
-        self.bind_all("<Control-Key-v>", self.global_paste)
-        self.bind_all("<Control-Key-V>", self.global_paste)
-        self.bind_all("<Control-Key-c>", self.global_copy)
-        self.bind_all("<Control-Key-C>", self.global_copy)
-        self.bind_all("<Control-Key-a>", self.global_select_all)
-        self.bind_all("<Control-Key-A>", self.global_select_all)
-        
-        self.bind_all("<Control-KeyPress-244>", self.global_paste) 
-        self.bind_all("<Control-KeyPress-241>", self.global_copy)  
-        self.bind_all("<Control-KeyPress-245>", self.global_select_all) 
+        self.bind_all("<Control-Key>", self.handle_global_shortcuts)
 
     def init_main_ui(self):
         self.top_bar = ctk.CTkFrame(self, fg_color=BG_PANEL, corner_radius=0, height=65)
@@ -107,9 +98,6 @@ class KanbanCSVApp(ctk.CTk):
         self.current_editing_row = None
         self.show_editor_placeholder()
 
-        self.bind_all("<Control-o>", lambda e: self.open_file())
-        self.bind_all("<Control-s>", lambda e: self.save_file())
-
     def get_target_text_widget(self):
         w = self.focus_get()
         if not w: return None
@@ -119,15 +107,42 @@ class KanbanCSVApp(ctk.CTk):
         if 'entry' in str(type(w)).lower() or 'textbox' in str(type(w)).lower(): return w
         return None
 
+    def handle_global_shortcuts(self, event):
+        key = event.keysym.lower()
+        if key == 'o':
+            self.open_file()
+            return "break"
+        elif key == 's':
+            self.save_file()
+            return "break"
+        
+        w = self.get_target_text_widget()
+        if not w: return
+
+        if key == 'v' or event.keycode == 86 or getattr(event, 'keysym_num', 0) == 244:
+            self.global_paste(None)
+            return "break"
+        elif key == 'c' or event.keycode == 67 or getattr(event, 'keysym_num', 0) == 241:
+            self.global_copy(None)
+            return "break"
+        elif key == 'a' or event.keycode == 65 or getattr(event, 'keysym_num', 0) == 245:
+            self.global_select_all(None)
+            return "break"
+
     def global_paste(self, event):
         w = self.get_target_text_widget()
         if w:
             try:
                 text = self.clipboard_get()
                 if text:
-                    w.insert(tk.INSERT, text)
-            except: pass
-            return "break"
+                    if isinstance(w, tk.Text) or 'text' in str(type(w)).lower():
+                        w.insert(tk.INSERT, text)
+                    else:
+                        w.delete(tk.SEL_FIRST, tk.SEL_LAST)
+                        w.insert(tk.INSERT, text)
+            except:
+                try: w.insert(tk.INSERT, text)
+                except: pass
 
     def global_copy(self, event):
         w = self.get_target_text_widget()
@@ -141,7 +156,6 @@ class KanbanCSVApp(ctk.CTk):
                     self.clipboard_clear()
                     self.clipboard_append(text)
             except: pass
-            return "break"
 
     def global_select_all(self, event):
         w = self.get_target_text_widget()
@@ -151,7 +165,6 @@ class KanbanCSVApp(ctk.CTk):
             elif hasattr(w, "select_range"):
                 w.select_range(0, tk.END)
                 w.icursor(tk.END)
-            return "break"
 
     def show_context_menu(self, event, widget):
         menu = tk.Menu(self, tearoff=0, bg=BG_PANEL, fg=FG_TEXT, selectcolor="#007acc")
@@ -287,18 +300,16 @@ class KanbanCSVApp(ctk.CTk):
             sf = ctk.CTkFrame(col_canvas, fg_color=BG_PANEL, corner_radius=0)
             col_canvas.create_window((0,0), window=sf, anchor="nw")
             
-            sf.bind("<Configure>", lambda e, cv=col_canvas, sff=sf: [cv.itemconfigure(cv.find_withtag("all")[0], width=cv.winfo_width()), cv.configure(scrollregion=cv.bbox("all"))])
+            sf.bind("<Configure>", lambda e, cv=col_canvas: [cv.itemconfigure(cv.find_withtag("all")[0], width=cv.winfo_width()), cv.configure(scrollregion=cv.bbox("all"))])
             f.bind("<Configure>", lambda e, cv=col_canvas: cv.configure(scrollregion=cv.bbox("all")))
             
             d["column_pages"][v] = PAGE_SIZE
             
-            def bind_mouse(canvas_target):
-                canvas_target.bind_all("<MouseWheel>", lambda e: canvas_target.yview_scroll(int(-1 * (e.delta / 120)), "units"))
-            def unbind_mouse(canvas_target):
-                canvas_target.unbind_all("<MouseWheel>")
-                
-            col_canvas.bind("<Enter>", lambda e, cv=col_canvas: bind_mouse(cv))
-            col_canvas.bind("<Leave>", lambda e, cv=col_canvas: unbind_mouse(cv))
+            def make_scroll_command(cv):
+                return lambda e: cv.yview_scroll(int(-1 * (e.delta / 120)), "units")
+            
+            col_canvas.bind("<Enter>", lambda e, cv=col_canvas: cv.bind_all("<MouseWheel>", make_scroll_command(cv)))
+            col_canvas.bind("<Leave>", lambda e, cv=col_canvas: cv.unbind_all("<MouseWheel>"))
             
             self.render_chunk(v, sf, 0, PAGE_SIZE)
 

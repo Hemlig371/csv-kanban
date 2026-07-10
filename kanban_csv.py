@@ -27,7 +27,7 @@ class EditCardDialog(tk.Toplevel):
         canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        canvas.pack(side="left", fill="both", expand=True, padx=10, py=10)
+        canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         scrollbar.pack(side="right", fill="y")
 
         self.entries = {}
@@ -241,7 +241,8 @@ class KanbanCSVApp(tk.Tk):
             col_frame = ttk.LabelFrame(
                 self.board_frame, text=f" {col_title} ", padding=8
             )
-            col_frame.grid(row=0, column=col_idx, padx=8, py=8, sticky="nsew")
+            # ИСПРАВЛЕНО: замещено py=8 на pady=8
+            col_frame.grid(row=0, column=col_idx, padx=8, pady=8, sticky="nsew")
 
             cards_frame = ttk.Frame(col_frame)
             cards_frame.pack(fill="both", expand=True)
@@ -281,7 +282,7 @@ class KanbanCSVApp(tk.Tk):
             anchor="w",
             font=("Arial", 9),
             padx=6,
-            py=6,
+            pady=6,
             wraplength=240
         )
         lbl.pack(fill="both", expand=True)

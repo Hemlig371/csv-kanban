@@ -53,7 +53,6 @@ class EditCardDialog(tk.Toplevel):
             side="right"
         )
 
-        # Центрируем модальное окно относительно главного окна
         self.update_idletasks()
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.winfo_width() // 2)
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.winfo_height() // 2)
@@ -98,7 +97,6 @@ class KanbanCSVApp(tk.Tk):
         self.bind("<Control-s>", lambda e: self.save_file())
 
     def init_main_ui(self):
-        # Верхняя панель
         self.top_bar = ttk.Frame(self, padding=10, relief="groove")
         self.top_bar.pack(fill="x", side="top")
 
@@ -109,14 +107,12 @@ class KanbanCSVApp(tk.Tk):
         )
         self.lbl_status.pack(side="left")
 
-        # Кнопка смены колонки (по умолчанию скрыта до загрузки файла)
         self.btn_change_col = ttk.Button(
             self.top_bar, text="Сменить колонку доски", command=self.choose_kanban_column
         )
 
-        # Основной контейнер доски
         self.main_container = ttk.Frame(self)
-        self.main_container.pack(fill="both", expand=True, padx=5, py=5)
+        self.main_container.pack(fill="both", expand=True, padx=5, pady=5)
 
         self.board_canvas = tk.Canvas(self.main_container, borderwidth=0, highlightthickness=0)
         self.h_scrollbar = ttk.Scrollbar(
@@ -157,7 +153,6 @@ class KanbanCSVApp(tk.Tk):
 
             first_line = lines[0]
             
-            # Подбираем разделитель по максимальному вхождению в первой строке
             possible_delimiters = [';', ',', '\t']
             detected_delimiter = ','
             max_count = -1
@@ -168,7 +163,6 @@ class KanbanCSVApp(tk.Tk):
                     max_count = count
                     detected_delimiter = d
 
-            # Читаем данные заново, используя корректный разделитель
             with open(file_path, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f, delimiter=detected_delimiter)
                 self.headers = reader.fieldnames
@@ -179,7 +173,6 @@ class KanbanCSVApp(tk.Tk):
 
             self.file_path = file_path
             
-            # Сохраняем диалект для последующей перезаписи структуры
             class CustomDialect(csv.excel):
                 delimiter = detected_delimiter
             self.csv_dialect = CustomDialect
@@ -189,7 +182,6 @@ class KanbanCSVApp(tk.Tk):
             )
             self.btn_change_col.pack(side="right", padx=5)
             
-            # Открываем диалог выбора колонки доски
             self.choose_kanban_column()
 
         except Exception as e:
@@ -221,21 +213,18 @@ class KanbanCSVApp(tk.Tk):
 
         ttk.Button(win, text="Построить доску", command=confirm).pack(pady=15)
         
-        # Центрируем модальное окно выбора
         win.update_idletasks()
         x = self.winfo_x() + (self.winfo_width() // 2) - (win.winfo_width() // 2)
         y = self.winfo_y() + (self.winfo_height() // 2) - (win.winfo_height() // 2)
         win.geometry(f"+{x}+{y}")
 
     def build_board(self):
-        # Очищаем старую разметку
         for child in self.board_frame.winfo_children():
             child.destroy()
 
         if not self.kanban_column:
             return
 
-        # Находим уникальные значения для колонок
         unique_values = set()
         for row in self.data:
             val = str(row.get(self.kanban_column, "")).strip()
@@ -244,9 +233,8 @@ class KanbanCSVApp(tk.Tk):
         sorted_values = sorted(list(unique_values))
         if "" in sorted_values:
             sorted_values.remove("")
-            sorted_values.append("") # Пустые значения переносим в конец
+            sorted_values.append("")
 
-        # Отрисовка столбцов Канбана
         for col_idx, col_value in enumerate(sorted_values):
             col_title = col_value if col_value else "[Пусто]"
 
@@ -270,7 +258,6 @@ class KanbanCSVApp(tk.Tk):
                 placeholder = ttk.Label(cards_frame, text="(Нет записей)", foreground="gray", padding=10)
                 placeholder.pack()
 
-        # Обновляем Canvas, чтобы заработали скроллбары
         self.update_idletasks()
         self.board_canvas.configure(scrollregion=self.board_canvas.bbox("all"))
 
@@ -281,7 +268,6 @@ class KanbanCSVApp(tk.Tk):
         card.pack(fill="x", padx=5, pady=5, anchor="n")
 
         preview_text = ""
-        # Показываем первые 4 поля на превью карточки
         for h in self.headers[:4]:
             val = str(row_dict.get(h, ""))
             val_trunc = val[:30] + "..." if len(val) > 30 else val

@@ -341,8 +341,11 @@ class KanbanCSVApp(ctk.CTk):
         bf = ctk.CTkFrame(self.right_editor_frame, fg_color=BG_PANEL)
         bf.pack(fill="x", side="bottom", pady=15, padx=15)
         
-        ctk.CTkButton(bf, text="Отмена", command=self.show_editor_placeholder, width=140, height=40, font=FONT_MAIN).pack(side="right", padx=5)
-        ctk.CTkButton(bf, text="Сохранить", command=lambda: self.save_edit(is_new), fg_color="#007acc", width=140, height=40, font=FONT_TEXT_BOLD).pack(side="right", padx=5)
+        ctk.CTkButton(bf, text="Отмена", command=self.show_editor_placeholder, width=130, height=40, font=FONT_MAIN).pack(side="right", padx=5)
+        ctk.CTkButton(bf, text="Сохранить", command=lambda: self.save_edit(is_new), fg_color="#007acc", width=130, height=40, font=FONT_TEXT_BOLD).pack(side="right", padx=5)
+
+        self.lbl_mini_status = ctk.CTkLabel(bf, text="", font=FONT_TEXT_BOLD, text_color="#10b981")
+        self.lbl_mini_status.pack(side="left", padx=5)
 
         editor_canvas = tk.Canvas(self.right_editor_frame, bg=BG_PANEL, highlightthickness=0)
         ed_scroll = AutoHideScrollbar(self.right_editor_frame, orientation="vertical", command=editor_canvas.yview)
@@ -352,9 +355,15 @@ class KanbanCSVApp(ctk.CTk):
         editor_canvas.pack(side="left", fill="both", expand=True)
         
         sf = ctk.CTkFrame(editor_canvas, fg_color=BG_PANEL)
-        editor_canvas.create_window((0,0), window=sf, anchor="nw", width=480)
+        editor_canvas.create_window((0,0), window=sf, anchor="nw", width=490)
         
         sf.bind("<Configure>", lambda e: editor_canvas.configure(scrollregion=editor_canvas.bbox("all")))
+        
+        def make_editor_scroll(cv):
+            return lambda e: cv.yview_scroll(int(-1 * (e.delta / 120)), "units")
+            
+        editor_canvas.bind("<Enter>", lambda e, cv=editor_canvas: cv.bind_all("<MouseWheel>", make_editor_scroll(cv)))
+        editor_canvas.bind("<Leave>", lambda e, cv=editor_canvas: cv.unbind_all("<MouseWheel>"))
         
         self.editor_widgets = {}
         st_list = sorted(list(set(str(r.get(d["kanban_column"], "")).strip() for r in d["data"] if r.get(d["kanban_column"], ""))))
@@ -377,7 +386,7 @@ class KanbanCSVApp(ctk.CTk):
                 w.insert(0, str(row.get(h, "")))
                 target_w = w._entry
                 
-            w.pack(fill="x", pady=2)
+            w.pack(fill="x", pady=2, padx=(0, 15))
             self.editor_widgets[h] = w
             target_w.bind("<Button-3>", lambda event, tw=target_w: self.show_context_menu(event, tw))
 
@@ -402,8 +411,12 @@ class KanbanCSVApp(ctk.CTk):
             with open(d["file_path"], "w", encoding="utf-8", newline="") as f:
                 w = csv.DictWriter(f, fieldnames=d["headers"], dialect=d["csv_dialect"])
                 w.writeheader(); w.writerows(d["data"])
-            messagebox.showinfo("OK", "Saved")
-        except Exception as e: messagebox.showerror("Error", str(e))
+            
+            if hasattr(self, 'lbl_mini_status') and self.lbl_mini_status.winfo_exists():
+                self.lbl_mini_status.configure(text="Сохранено успешно!")
+                self.after(3000, lambda: self.lbl_mini_status.configure(text="") if self.lbl_mini_status.winfo_exists() else None)
+        except Exception as e: 
+            messagebox.showerror("Error", str(e))
 
 
 if __name__ == "__main__":

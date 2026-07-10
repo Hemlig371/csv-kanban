@@ -196,44 +196,62 @@ class KanbanCSVApp(ctk.CTk):
     def open_file(self):
         fp = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
         if not fp: return
-        try:
-            with open(fp, "r", encoding="utf-8") as f:
-                lines = [f.readline() for _ in range(5)]
-            if not lines: return
-            dlm = ';' if ';' in lines[0] else (',' if ',' in lines[0] else '\t')
-            with open(fp, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f, delimiter=dlm)
-                headers = reader.fieldnames
-                data = list(reader)
-            
-            title = os.path.basename(fp)
-            while title in self.tabs_data: title += "_"
-            
-            class Dialect(csv.excel): delimiter = dlm
-            
-            self.tab_control.add(title)
-            root_tab = self.tab_control.tab(title)
-            canvas = tk.Canvas(root_tab, bg=BG_MAIN, highlightthickness=0)
-            h_scroll = AutoHideScrollbar(root_tab, orientation="horizontal", command=canvas.xview)
-            canvas.configure(xscrollcommand=h_scroll.set)
-            
-            h_scroll.pack(side="bottom", fill="x")
-            canvas.pack(side="top", fill="both", expand=True)
-            
-            cnt = ctk.CTkFrame(canvas, fg_color=BG_MAIN)
-            canvas.create_window((0, 0), window=cnt, anchor="nw")
-            
-            cnt.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-            
-            self.tabs_data[title] = {
-                "file_path": fp, "headers": headers, "data": data, "csv_dialect": Dialect,
-                "kanban_column": None, "text_column": None, "column_pages": {}, 
-                "column_data_map": {}, "container": cnt, "scroll_root": canvas
-            }
-            self.tab_control.set(title)
-            self.on_tab_changed()
-            self.setup_kanban_columns_dialog()
-        except Exception as e: messagebox.showerror("Error", str(e))
+        self.show_import_dialog(fp)
+
+    def show_import_dialog(self, fp):
+        win = ctk.CTkToplevel(self)
+        win.title("Настройки импорта")
+        win.geometry("300x300")
+        win.grab_set()
+
+        ctk.CTkLabel(win, text="Кодировка:").pack(pady=(20, 5))
+        enc_entry = ctk.CTkEntry(win); enc_entry.insert(0, "utf-8"); enc_entry.pack()
+
+        ctk.CTkLabel(win, text="Разделитель:").pack(pady=(20, 5))
+        sep_entry = ctk.CTkEntry(win); sep_entry.insert(0, ";"); sep_entry.pack()
+
+        def run_import():
+            enc = enc_entry.get()
+            sep = sep_entry.get()
+            try:
+                with open(fp, "r", encoding=enc) as f:
+                    reader = csv.DictReader(f, delimiter=sep)
+                    data = list(reader)
+                    headers = reader.fieldnames
+                self.finalize_open(fp, headers, data, sep, enc)
+                win.destroy()
+            except Exception as e: messagebox.showerror("Ошибка", str(e))
+
+        ctk.CTkButton(win, text="ОК", command=run_import).pack(pady=30)
+
+    def finalize_open(self, fp, headers, data, sep, enc):
+        title = os.path.basename(fp)
+        while title in self.tabs_data: title += "_"
+        
+        class Dialect(csv.excel): delimiter = sep
+        
+        self.tab_control.add(title)
+        root_tab = self.tab_control.tab(title)
+        canvas = tk.Canvas(root_tab, bg=BG_MAIN, highlightthickness=0)
+        h_scroll = AutoHideScrollbar(root_tab, orientation="horizontal", command=canvas.xview)
+        canvas.configure(xscrollcommand=h_scroll.set)
+        
+        h_scroll.pack(side="bottom", fill="x")
+        canvas.pack(side="top", fill="both", expand=True)
+        
+        cnt = ctk.CTkFrame(canvas, fg_color=BG_MAIN)
+        canvas.create_window((0, 0), window=cnt, anchor="nw")
+        
+        cnt.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        
+        self.tabs_data[title] = {
+            "file_path": fp, "headers": headers, "data": data, "csv_dialect": Dialect,
+            "sep": sep, "enc": enc, "kanban_column": None, "text_column": None, 
+            "column_pages": {}, "column_data_map": {}, "container": cnt, "scroll_root": canvas
+        }
+        self.tab_control.set(title)
+        self.on_tab_changed()
+        self.setup_kanban_columns_dialog()
 
     def on_tab_changed(self):
         self.active_tab = self.tab_control.get()
@@ -416,8 +434,8 @@ class KanbanCSVApp(ctk.CTk):
         if not self.active_tab: return
         d = self.tabs_data[self.active_tab]
         try:
-            with open(d["file_path"], "w", encoding="utf-8", newline="") as f:
-                w = csv.DictWriter(f, fieldnames=d["headers"], dialect=d["csv_dialect"])
+            with open(d["file_path"], "w", encoding=d["enc"], newline="") as f:
+                w = csv.DictWriter(f, fieldnames=d["headers"], delimiter=d["sep"])
                 w.writeheader(); w.writerows(d["data"])
             
             self.show_notification("Файл успешно сохранен на диск!", "#10b981")

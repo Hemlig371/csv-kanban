@@ -58,7 +58,7 @@ class KanbanCSVApp(ctk.CTk):
 
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        width, height = 1460, 910
+        width, height = 1460, 980
         self.geometry(f"{width}x{height}+{(screen_w-width)//2}+{(screen_h-height)//2}")
         
         self.protocol("WM_DELETE_WINDOW", self.on_closing)

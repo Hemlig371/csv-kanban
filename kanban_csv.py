@@ -281,7 +281,7 @@ class KanbanCSVApp(ctk.CTk):
         
         update_preview()
 
-        def run_import():
+        def run_import(event=None):
             enc = enc_var.get()
             raw_sep = sep_var.get()
             actual_sep = "\t" if raw_sep == "\\t" else raw_sep
@@ -307,6 +307,7 @@ class KanbanCSVApp(ctk.CTk):
                 messagebox.showerror("Ошибка", str(e))
 
         ctk.CTkButton(win, text="Импортировать", command=run_import, font=FONT_TEXT_BOLD, width=200, height=40).pack(pady=20)
+        win.bind('<Return>', run_import)
 
     def finalize_open(self, fp, headers, data, sep, enc):
         title = os.path.basename(fp)
@@ -376,8 +377,14 @@ class KanbanCSVApp(ctk.CTk):
         ctk.CTkLabel(win, text="Многострочное поле:", font=FONT_HEADER).pack(pady=(15,5))
         c2 = ctk.CTkComboBox(win, values=["[Нет]"] + d["headers"], width=300)
         c2.pack(pady=5); c2.set(d["text_column"] or "[Нет]")
+
+        found_text_field = next((h for h in d["headers"] if h.lower() in ["текст", "text"]), None)
+        if found_text_field:
+            c2.set(found_text_field)
+        else:
+            c2.set(d["text_column"] or "[Нет]")
         
-        def apply():
+        def apply(event=None):
             selected_col = c1.get()
             unique_vals = set(str(r.get(selected_col, "")).strip() for r in d["data"])
             if len(unique_vals) > 20:
@@ -390,6 +397,7 @@ class KanbanCSVApp(ctk.CTk):
             self.build_board()
             
         ctk.CTkButton(win, text="OK", command=apply, font=FONT_TEXT_BOLD).pack(pady=30)
+        win.bind('<Return>', apply)
 
     def _create_scroll_cmd(self, canvas):
         return lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")

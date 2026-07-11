@@ -97,25 +97,41 @@ class KanbanCSVApp(ctk.CTk):
         try:
             with open("session.json", "r", encoding="utf-8") as f:
                 session_data = json.load(f)
-                
-            for item in session_data:
-                fp = item.get("file_path")
-                if fp and os.path.exists(fp):
-                    enc, sep = item.get("enc", "utf-8"), item.get("sep", ",")
-                    data = []
-                    with open(fp, "r", encoding=enc) as f:
-                        reader = csv.DictReader(f, delimiter=sep)
-                        headers = reader.fieldnames
-                        for row in reader:
-                            data.append(row)
-                    
-                    self.finalize_open(
-                        fp, headers, data, sep, enc, 
-                        kanban_col=item.get("kanban_column"), 
-                        text_col=item.get("text_column")
-                    )
         except Exception as e:
-            print(f"Ошибка загрузки сессии: {e}")
+            messagebox.showwarning(
+                "Восстановление сессии", 
+                f"Не удалось прочитать файл сессии (возможно, он поврежден).\nОшибка: {e}"
+            )
+            return
+            
+        if not isinstance(session_data, list): return
+
+        for item in session_data:
+            fp = item.get("file_path")
+            if not fp or not os.path.exists(fp):
+                continue
+                
+            try:
+                enc = item.get("enc", "utf-8")
+                sep = item.get("sep", ",")
+                
+                data = []
+                with open(fp, "r", encoding=enc) as f:
+                    reader = csv.DictReader(f, delimiter=sep)
+                    headers = reader.fieldnames
+                    for row in reader:
+                        data.append(row)
+                
+                self.finalize_open(
+                    fp, headers, data, sep, enc, 
+                    kanban_col=item.get("kanban_column"), 
+                    text_col=item.get("text_column")
+                )
+            except Exception as file_error:
+                messagebox.showerror(
+                    "Ошибка загрузки файла", 
+                    f"Не удалось восстановить файл:\n{os.path.basename(fp)}\n\nОшибка: {file_error}"
+                )
 
     def init_main_ui(self):
         self.top_bar = ctk.CTkFrame(self, fg_color=BG_PANEL, corner_radius=0, height=65)

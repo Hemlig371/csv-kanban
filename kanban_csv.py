@@ -56,7 +56,7 @@ class KanbanCSVApp(ctk.CTk):
 
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        width, height = 1250, 720
+        width, height = 1400, 810
         self.geometry(f"{width}x{height}+{(screen_w-width)//2}+{(screen_h-height)//2}")
         
         self.bind_all("<Control-Key>", self.handle_global_shortcuts)
@@ -89,7 +89,7 @@ class KanbanCSVApp(ctk.CTk):
         self.work_area = ctk.CTkFrame(self, fg_color=BG_MAIN, corner_radius=0)
         self.work_area.pack(fill="both", expand=True, padx=5, pady=5)
 
-        self.right_editor_frame = ctk.CTkFrame(self.work_area, fg_color=BG_PANEL, width=520, border_color=BORDER_COLOR, border_width=1, corner_radius=8)
+        self.right_editor_frame = ctk.CTkFrame(self.work_area, fg_color=BG_PANEL, width=440, border_color=BORDER_COLOR, border_width=1, corner_radius=8)
         self.right_editor_frame.pack(side="right", fill="y", padx=5, pady=5)
         self.right_editor_frame.pack_propagate(False)
 
@@ -380,8 +380,8 @@ class KanbanCSVApp(ctk.CTk):
         
         keys = sorted(d["column_data_map"].keys())
         for i, v in enumerate(keys):
-            c.grid_columnconfigure(i, weight=0, minsize=380)
-            f = ctk.CTkFrame(c, fg_color=BG_PANEL, border_color=BORDER_COLOR, border_width=1, width=370, height=830)
+            c.grid_columnconfigure(i, weight=0, minsize=330)
+            f = ctk.CTkFrame(c, fg_color=BG_PANEL, border_color=BORDER_COLOR, border_width=1, width=320, height=830)
             f.grid(row=0, column=i, padx=5, pady=5, sticky="nsew")
             f.pack_propagate(False)
             

@@ -56,7 +56,7 @@ class KanbanCSVApp(ctk.CTk):
 
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        width, height = 1850, 1000
+        width, height = 1250, 720
         self.geometry(f"{width}x{height}+{(screen_w-width)//2}+{(screen_h-height)//2}")
         
         self.bind_all("<Control-Key>", self.handle_global_shortcuts)
@@ -66,14 +66,17 @@ class KanbanCSVApp(ctk.CTk):
         self.top_bar.pack(fill="x", side="top")
         self.top_bar.pack_propagate(False)
 
-        self.btn_open = ctk.CTkButton(self.top_bar, text="Открыть CSV", command=self.open_file, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=190, height=45)
+        self.btn_open = ctk.CTkButton(self.top_bar, text="Открыть", command=self.open_file, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=120, height=45)
         self.btn_open.pack(side="left", padx=10)
 
-        self.btn_save = ctk.CTkButton(self.top_bar, text="Сохранить", command=self.save_file, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=190, height=45)
+        self.btn_save = ctk.CTkButton(self.top_bar, text="Сохранить", command=self.save_file, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=120, height=45)
         self.btn_save.pack(side="left", padx=5)
 
-        self.btn_change_col = ctk.CTkButton(self.top_bar, text="Настройка колонок", command=self.setup_kanban_columns_dialog, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=190, height=45)
-        self.btn_add_card = ctk.CTkButton(self.top_bar, text="+ Добавить запись", command=self.add_new_card, font=FONT_TEXT_BOLD, fg_color="#007acc", text_color="white", width=190, height=45)
+        self.btn_save_as = ctk.CTkButton(self.top_bar, text="Сохранить как...", command=self.save_file_as, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=170, height=45)
+        self.btn_save_as.pack(side="left", padx=5)
+
+        self.btn_change_col = ctk.CTkButton(self.top_bar, text="Колонки", command=self.setup_kanban_columns_dialog, font=FONT_MAIN, fg_color=BG_CARD, text_color=FG_TEXT, border_color=BORDER_COLOR, border_width=1, width=120, height=45)
+        self.btn_add_card = ctk.CTkButton(self.top_bar, text="+ Запись", command=self.add_new_card, font=FONT_TEXT_BOLD, fg_color="#007acc", text_color="white", width=120, height=45)
 
         self.lbl_status = ctk.CTkLabel(self.top_bar, text="Файлы не загружены.", font=FONT_MUTED_ITALIC, text_color=FG_TEXT)
         self.lbl_status.pack(side="left", padx=20)
@@ -201,22 +204,26 @@ class KanbanCSVApp(ctk.CTk):
     def show_import_dialog(self, fp):
         win = ctk.CTkToplevel(self)
         win.title("Настройки импорта")
-        win.geometry("600x480")
+        win.geometry("620x480")
         win.grab_set()
 
-        enc_var = tk.StringVar(value="utf-8")
-        sep_var = tk.StringVar(value=";")
+        enc_var = tk.StringVar(win, value="utf-8")
+        sep_var = tk.StringVar(win, value=",")
 
         top_frame = ctk.CTkFrame(win, fg_color="transparent")
         top_frame.pack(pady=(20, 10), fill="x", padx=20)
 
+        # Выпадающий список кодировок
         ctk.CTkLabel(top_frame, text="Кодировка:", font=FONT_MAIN).pack(side="left", padx=(0, 5))
-        enc_entry = ctk.CTkEntry(top_frame, textvariable=enc_var, font=FONT_MAIN, width=120)
-        enc_entry.pack(side="left", padx=5)
+        encodings_list = ["utf-8", "windows-1251", "cp866", "utf-8-sig", "utf-16", "latin-1"]
+        enc_combo = ctk.CTkComboBox(top_frame, variable=enc_var, values=encodings_list, font=FONT_MAIN, width=150)
+        enc_combo.pack(side="left", padx=5)
 
+        # Выпадающий список разделителей
         ctk.CTkLabel(top_frame, text="Разделитель:", font=FONT_MAIN).pack(side="left", padx=(20, 5))
-        sep_entry = ctk.CTkEntry(top_frame, textvariable=sep_var, font=FONT_MAIN, width=50)
-        sep_entry.pack(side="left", padx=5)
+        separators_list = [";", ",", "|", "\\t"]
+        sep_combo = ctk.CTkComboBox(top_frame, variable=sep_var, values=separators_list, font=FONT_MAIN, width=80)
+        sep_combo.pack(side="left", padx=5)
 
         ctk.CTkLabel(win, text="Предпросмотр данных (первые 5 строк):", font=FONT_MAIN).pack(anchor="w", padx=20, pady=(15, 5))
         
@@ -225,19 +232,20 @@ class KanbanCSVApp(ctk.CTk):
 
         def update_preview(*args):
             enc = enc_var.get()
-            sep = sep_var.get()
+            raw_sep = sep_var.get()
+            actual_sep = "\t" if raw_sep == "\\t" else raw_sep
             
             preview_text.configure(state="normal")
             preview_text.delete("1.0", "end")
             
-            if len(sep) != 1:
+            if len(actual_sep) != 1:
                 preview_text.insert("1.0", "Разделитель должен состоять строго из 1 символа.")
                 preview_text.configure(state="disabled")
                 return
 
             try:
                 with open(fp, "r", encoding=enc) as f:
-                    reader = csv.reader(f, delimiter=sep)
+                    reader = csv.reader(f, delimiter=actual_sep)
                     lines = []
                     for i, row in enumerate(reader):
                         if i >= 5: break
@@ -255,23 +263,25 @@ class KanbanCSVApp(ctk.CTk):
 
         def run_import():
             enc = enc_var.get()
-            sep = sep_var.get()
-            if len(sep) != 1:
+            raw_sep = sep_var.get()
+            actual_sep = "\t" if raw_sep == "\\t" else raw_sep
+            
+            if len(actual_sep) != 1:
                 messagebox.showerror("Ошибка", "Разделитель должен быть одним символом.")
                 return
 
             try:
                 data = []
                 with open(fp, "r", encoding=enc) as f:
-                    reader = csv.DictReader(f, delimiter=sep)
+                    reader = csv.DictReader(f, delimiter=actual_sep)
                     headers = reader.fieldnames
                     for i, row in enumerate(reader):
                         if i >= 10000:
-                            messagebox.showwarning("Ограничение загрузки", "Файл содержит более 10 000 строк")
+                            messagebox.showwarning("Ограничение загрузки", "Файл содержит более 10 000 строк.")
                             break
                         data.append(row)
                 
-                self.finalize_open(fp, headers, data, sep, enc)
+                self.finalize_open(fp, headers, data, actual_sep, enc)
                 win.destroy()
             except Exception as e: 
                 messagebox.showerror("Ошибка", str(e))
@@ -328,6 +338,7 @@ class KanbanCSVApp(ctk.CTk):
             d = self.tabs_data.pop(t)
             d["container"].destroy()
             d["scroll_root"].destroy()
+            d.clear()
             gc.collect()
             self.on_tab_changed()
 
@@ -354,12 +365,15 @@ class KanbanCSVApp(ctk.CTk):
             
         ctk.CTkButton(win, text="OK", command=apply, font=FONT_TEXT_BOLD).pack(pady=30)
 
+    def _create_scroll_cmd(self, canvas):
+        return lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+
     def build_board(self):
         d = self.tabs_data[self.active_tab]
         c = d["container"]
         for w in c.winfo_children(): w.destroy()
         
-        d["column_data_map"] = {}
+        d["column_data_map"].clear()
         for r in d["data"]:
             v = str(r.get(d["kanban_column"], "")).strip() or "[Пусто]"
             d["column_data_map"].setdefault(v, []).append(r)
@@ -388,10 +402,8 @@ class KanbanCSVApp(ctk.CTk):
             
             d["column_pages"][v] = PAGE_SIZE
             
-            def make_scroll_command(cv):
-                return lambda e: cv.yview_scroll(int(-1 * (e.delta / 120)), "units")
-            
-            col_canvas.bind("<Enter>", lambda e, cv=col_canvas: cv.bind_all("<MouseWheel>", make_scroll_command(cv)))
+            scroll_cmd = self._create_scroll_cmd(col_canvas)
+            col_canvas.bind("<Enter>", lambda e, cv=col_canvas, cmd=scroll_cmd: cv.bind_all("<MouseWheel>", cmd))
             col_canvas.bind("<Leave>", lambda e, cv=col_canvas: cv.unbind_all("<MouseWheel>"))
             
             self.render_chunk(v, sf, 0, PAGE_SIZE)
@@ -407,7 +419,7 @@ class KanbanCSVApp(ctk.CTk):
             lbl = ctk.CTkLabel(card, text=txt, font=FONT_CARD, justify="left", anchor="w", wraplength=320)
             lbl.pack(fill="both", padx=10, pady=10)
             
-            for w in [card, lbl]: w.bind("<Double-1>", lambda e, r=r: self.load_editor(r))
+            for w in [card, lbl]: w.bind("<Double-1>", lambda e, row_ref=r: self.load_editor(row_ref))
 
     def show_editor_placeholder(self):
         for w in self.right_editor_frame.winfo_children(): w.destroy()
@@ -443,12 +455,10 @@ class KanbanCSVApp(ctk.CTk):
         editor_canvas.bind('<Configure>', lambda e, cv=editor_canvas, fid=canvas_frame_id: cv.itemconfigure(fid, width=e.width))
         sf.bind("<Configure>", lambda e, cv=editor_canvas: cv.configure(scrollregion=cv.bbox("all")))
         
-        def make_editor_scroll(cv):
-            return lambda e: cv.yview_scroll(int(-1 * (e.delta / 120)), "units")
-            
-        editor_canvas.bind("<Enter>", lambda e, cv=editor_canvas: cv.bind_all("<MouseWheel>", make_editor_scroll(cv)))
+        scroll_cmd = self._create_scroll_cmd(editor_canvas)
+        editor_canvas.bind("<Enter>", lambda e, cv=editor_canvas, cmd=scroll_cmd: cv.bind_all("<MouseWheel>", cmd))
         editor_canvas.bind("<Leave>", lambda e, cv=editor_canvas: cv.unbind_all("<MouseWheel>"))
-        sf.bind("<Enter>", lambda e, cv=editor_canvas: cv.bind_all("<MouseWheel>", make_editor_scroll(cv)))
+        sf.bind("<Enter>", lambda e, cv=editor_canvas, cmd=scroll_cmd: cv.bind_all("<MouseWheel>", cmd))
         
         self.editor_widgets = {}
         st_list = sorted(list(set(str(r.get(d["kanban_column"], "")).strip() for r in d["data"] if r.get(d["kanban_column"], ""))))
@@ -508,6 +518,20 @@ class KanbanCSVApp(ctk.CTk):
     def add_new_card(self):
         if self.active_tab: self.load_editor({h: "" for h in self.tabs_data[self.active_tab]["headers"]}, True)
 
+    def save_file_as(self):
+        if not self.active_tab: return
+        d = self.tabs_data[self.active_tab]
+        fp = filedialog.asksaveasfilename(
+            defaultextension=".csv", 
+            filetypes=[("CSV Files", "*.csv")],
+            initialfile=os.path.basename(d["file_path"]),
+            title="Сохранить как..."
+        )
+        if not fp: return
+        d["file_path"] = fp
+        self.save_file()
+        self.on_tab_changed()
+
     def save_file(self):
         if not self.active_tab: return
         d = self.tabs_data[self.active_tab]
@@ -517,9 +541,11 @@ class KanbanCSVApp(ctk.CTk):
                 w.writeheader()
                 w.writerows(d["data"])
             
-            self.show_notification("Файл успешно сохранен на диск!", "#10b981")
+            self.show_notification("Файл успешно сохранен!", "#10b981")
+        except PermissionError:
+            messagebox.showerror("Ошибка доступа", f"Не удалось сохранить файл.\nВозможно, он открыт в другой программе.")
         except Exception as e: 
-            messagebox.showerror("Error", str(e))
+            messagebox.showerror("Ошибка", str(e))
 
 
 if __name__ == "__main__":

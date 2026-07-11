@@ -378,7 +378,13 @@ class KanbanCSVApp(ctk.CTk):
         c2.pack(pady=5); c2.set(d["text_column"] or "[Нет]")
         
         def apply():
-            d["kanban_column"] = c1.get()
+            selected_col = c1.get()
+            unique_vals = set(str(r.get(selected_col, "")).strip() for r in d["data"])
+            if len(unique_vals) > 20:
+                messagebox.showwarning("Ошибка", f"Слишком много групп ({len(unique_vals)})")
+                return
+            
+            d["kanban_column"] = selected_col
             d["text_column"] = None if c2.get() == "[Нет]" else c2.get()
             win.destroy()
             self.build_board()
@@ -390,18 +396,18 @@ class KanbanCSVApp(ctk.CTk):
 
     def build_board(self):
         d = self.tabs_data[self.active_tab]
-        c = d["container"]
-        for w in c.winfo_children(): w.destroy()
         
         d["column_data_map"].clear()
         for r in d["data"]:
             v = str(r.get(d["kanban_column"], "")).strip() or "[Пусто]"
             d["column_data_map"].setdefault(v, []).append(r)
         
+        new_cnt = ctk.CTkFrame(d["scroll_root"], fg_color=BG_MAIN)
+        
         keys = sorted(d["column_data_map"].keys())
         for i, v in enumerate(keys):
-            c.grid_columnconfigure(i, weight=0, minsize=330)
-            f = ctk.CTkFrame(c, fg_color=BG_PANEL, border_color=BORDER_COLOR, border_width=1, width=320, height=830)
+            new_cnt.grid_columnconfigure(i, weight=0, minsize=330)
+            f = ctk.CTkFrame(new_cnt, fg_color=BG_PANEL, border_color=BORDER_COLOR, border_width=1, width=320, height=830)
             f.grid(row=0, column=i, padx=5, pady=5, sticky="nsew")
             f.pack_propagate(False)
             
@@ -427,6 +433,15 @@ class KanbanCSVApp(ctk.CTk):
             col_canvas.bind("<Leave>", lambda e, cv=col_canvas: cv.unbind_all("<MouseWheel>"))
             
             self.render_chunk(v, sf, 0, PAGE_SIZE)
+
+        old_cnt = d["container"]
+        d["container"] = new_cnt
+        d["scroll_root"].create_window((0, 0), window=new_cnt, anchor="nw")
+        
+        if old_cnt:
+            old_cnt.destroy()
+        
+        new_cnt.bind("<Configure>", lambda e: d["scroll_root"].configure(scrollregion=d["scroll_root"].bbox("all")))
 
     def render_chunk(self, v, sf, start, end):
         d = self.tabs_data[self.active_tab]

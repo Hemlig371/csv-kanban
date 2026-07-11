@@ -1,3 +1,4 @@
+import sys
 import csv
 import os
 import tkinter as tk
@@ -10,7 +11,7 @@ ctk.set_default_color_theme("blue")
 
 BG_MAIN = "#1e1e1e"
 BG_PANEL = "#252526"
-BG_CARD = "#2d2d30"
+BG_CARD = "#808080"
 FG_TEXT = "#e1e1e1"
 BORDER_COLOR = "#3f3f46"
 PAGE_SIZE = 25
@@ -56,10 +57,11 @@ class KanbanCSVApp(ctk.CTk):
 
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        width, height = 1400, 810
+        width, height = 1460, 910
         self.geometry(f"{width}x{height}+{(screen_w-width)//2}+{(screen_h-height)//2}")
         
         self.bind_all("<Control-Key>", self.handle_global_shortcuts)
+        self.after(200, self.check_command_line_args)
 
     def init_main_ui(self):
         self.top_bar = ctk.CTkFrame(self, fg_color=BG_PANEL, corner_radius=0, height=65)
@@ -196,8 +198,14 @@ class KanbanCSVApp(ctk.CTk):
         menu.add_command(label="Выделить всё", command=lambda: self.global_select_all(None))
         menu.tk_popup(event.x_root, event.y_root)
 
+    def check_command_line_args(self):
+        if len(sys.argv) > 1:
+            fp = sys.argv[1]
+            if os.path.exists(fp):
+                self.show_import_dialog(fp)
+                
     def open_file(self):
-        fp = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
+        fp = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")])
         if not fp: return
         self.show_import_dialog(fp)
 
@@ -213,13 +221,11 @@ class KanbanCSVApp(ctk.CTk):
         top_frame = ctk.CTkFrame(win, fg_color="transparent")
         top_frame.pack(pady=(20, 10), fill="x", padx=20)
 
-        # Выпадающий список кодировок
         ctk.CTkLabel(top_frame, text="Кодировка:", font=FONT_MAIN).pack(side="left", padx=(0, 5))
         encodings_list = ["utf-8", "windows-1251", "cp866", "utf-8-sig", "utf-16", "latin-1"]
         enc_combo = ctk.CTkComboBox(top_frame, variable=enc_var, values=encodings_list, font=FONT_MAIN, width=150)
         enc_combo.pack(side="left", padx=5)
 
-        # Выпадающий список разделителей
         ctk.CTkLabel(top_frame, text="Разделитель:", font=FONT_MAIN).pack(side="left", padx=(20, 5))
         separators_list = [";", ",", "|", "\\t"]
         sep_combo = ctk.CTkComboBox(top_frame, variable=sep_var, values=separators_list, font=FONT_MAIN, width=80)

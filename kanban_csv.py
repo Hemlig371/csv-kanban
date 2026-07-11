@@ -1,6 +1,7 @@
 import sys
 import csv
 import os
+import json
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
@@ -60,8 +61,61 @@ class KanbanCSVApp(ctk.CTk):
         width, height = 1460, 910
         self.geometry(f"{width}x{height}+{(screen_w-width)//2}+{(screen_h-height)//2}")
         
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.after(100, self.restore_session)
+        
         self.bind_all("<Control-Key>", self.handle_global_shortcuts)
         self.after(200, self.check_command_line_args)
+
+    def center_toplevel(self, top, width, height):
+        top.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() // 2) - (width // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (height // 2)
+        top.geometry(f"{width}x{height}+{x}+{y}")
+
+    def on_closing(self):
+        session_data = []
+        for title, d in self.tabs_data.items():
+            if os.path.exists(d["file_path"]):
+                session_data.append({
+                    "file_path": d["file_path"],
+                    "enc": d["enc"],
+                    "sep": d["sep"],
+                    "kanban_column": d["kanban_column"],
+                    "text_column": d["text_column"]
+                })
+        try:
+            with open("session.json", "w", encoding="utf-8") as f:
+                json.dump(session_data, f, ensure_ascii=False, indent=4)
+        except:
+            pass
+        self.destroy()
+
+    def restore_session(self):
+        if not os.path.exists("session.json"): return
+        
+        try:
+            with open("session.json", "r", encoding="utf-8") as f:
+                session_data = json.load(f)
+                
+            for item in session_data:
+                fp = item.get("file_path")
+                if fp and os.path.exists(fp):
+                    enc, sep = item.get("enc", "utf-8"), item.get("sep", ",")
+                    data = []
+                    with open(fp, "r", encoding=enc) as f:
+                        reader = csv.DictReader(f, delimiter=sep)
+                        headers = reader.fieldnames
+                        for row in reader:
+                            data.append(row)
+                    
+                    self.finalize_open(
+                        fp, headers, data, sep, enc, 
+                        kanban_col=item.get("kanban_column"), 
+                        text_col=item.get("text_column")
+                    )
+        except Exception as e:
+            print(f"Ошибка загрузки сессии: {e}")
 
     def init_main_ui(self):
         self.top_bar = ctk.CTkFrame(self, fg_color=BG_PANEL, corner_radius=0, height=65)
@@ -109,6 +163,19 @@ class KanbanCSVApp(ctk.CTk):
     def show_notification(self, text, color="#10b981"):
         self.lbl_global_notify.configure(text=text, text_color=color)
         self.after(3000, lambda: self.lbl_global_notify.configure(text=""))
+        
+    def update_status_bar(self):
+        if not self.active_tab:
+            self.lbl_status.configure(text="Файлы не загружены.", text_color=FG_TEXT)
+            return
+        d = self.tabs_data[self.active_tab]
+        status_text = f"Строк: {len(d['data'])}"
+        
+        if d.get("is_unsaved", False):
+            status_text += "  |  * НЕ СОХРАНЕНО"
+            self.lbl_status.configure(text=status_text, text_color="#facc15")
+        else:
+            self.lbl_status.configure(text=status_text, text_color=FG_TEXT)
 
     def get_target_text_widget(self):
         w = self.focus_get()
@@ -226,7 +293,7 @@ class KanbanCSVApp(ctk.CTk):
     def show_import_dialog(self, fp):
         win = ctk.CTkToplevel(self)
         win.title("Настройки импорта")
-        win.geometry("620x480")
+        self.center_toplevel(win, 620, 480)
         win.grab_set()
 
         enc_var = tk.StringVar(win, value="utf-8")
@@ -309,7 +376,7 @@ class KanbanCSVApp(ctk.CTk):
         ctk.CTkButton(win, text="Импортировать", command=run_import, font=FONT_TEXT_BOLD, width=200, height=40).pack(pady=20)
         win.bind('<Return>', run_import)
 
-    def finalize_open(self, fp, headers, data, sep, enc):
+    def finalize_open(self, fp, headers, data, sep, enc, kanban_col=None, text_col=None):
         title = os.path.basename(fp)
         while title in self.tabs_data: title += "_"
         
@@ -326,48 +393,61 @@ class KanbanCSVApp(ctk.CTk):
         
         cnt = ctk.CTkFrame(canvas, fg_color=BG_MAIN)
         canvas.create_window((0, 0), window=cnt, anchor="nw")
-        
         cnt.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         
         self.tabs_data[title] = {
             "file_path": fp, "headers": headers, "data": data, "csv_dialect": Dialect,
-            "sep": sep, "enc": enc, "kanban_column": None, "text_column": None, 
-            "column_pages": {}, "column_data_map": {}, "container": cnt, "scroll_root": canvas
+            "sep": sep, "enc": enc, "kanban_column": kanban_col, "text_column": text_col, 
+            "column_pages": {}, "column_data_map": {}, "container": cnt, "scroll_root": canvas,
+            "is_unsaved": False
         }
         self.tab_control.set(title)
         self.on_tab_changed()
-        self.setup_kanban_columns_dialog()
+        
+        if kanban_col:
+            self.build_board()
+        else:
+            self.setup_kanban_columns_dialog()
 
     def on_tab_changed(self):
         self.active_tab = self.tab_control.get()
         if not self.active_tab:
             for b in [self.btn_change_col, self.btn_add_card, self.btn_close_tab]: b.pack_forget()
             self.show_editor_placeholder()
+            self.update_status_bar()
             return
-        d = self.tabs_data[self.active_tab]
-        self.lbl_status.configure(text=f"Файл: {os.path.basename(d['file_path'])} | Строк: {len(d['data'])}")
+            
+        self.update_status_bar()
         self.btn_change_col.pack(side="right", padx=10)
         self.btn_add_card.pack(side="right", padx=5)
         self.btn_close_tab.pack(side="right", padx=10)
         self.show_editor_placeholder()
 
-    def close_current_tab(self):
+    def close_current_tab(self, force=False):
         t = self.active_tab
         if not t: return
-        if messagebox.askyesno("Подтверждение", f"Закрыть {t}?"):
-            self.tab_control.delete(t)
-            d = self.tabs_data.pop(t)
-            d["container"].destroy()
-            d["scroll_root"].destroy()
-            d.clear()
-            gc.collect()
-            self.on_tab_changed()
+        
+        d = self.tabs_data[t]
+        if not force:
+            warn_text = f"Закрыть {t}?"
+            if d.get("is_unsaved"):
+                warn_text = f"В файле {t} есть НЕСОХРАНЕННЫЕ изменения!\nВсе равно закрыть?"
+                
+            if not messagebox.askyesno("Подтверждение", warn_text):
+                return
+
+        self.tab_control.delete(t)
+        d["container"].destroy()
+        d["scroll_root"].destroy()
+        del self.tabs_data[t]
+        gc.collect()
+        self.on_tab_changed()
 
     def setup_kanban_columns_dialog(self):
         d = self.tabs_data[self.active_tab]
         win = ctk.CTkToplevel(self)
         win.title("Настройки")
-        win.geometry("500x350")
+        self.center_toplevel(win, 500, 350)
         win.grab_set()
         
         ctk.CTkLabel(win, text="Группировать по:", font=FONT_HEADER).pack(pady=(20,5))
@@ -538,7 +618,8 @@ class KanbanCSVApp(ctk.CTk):
         self.current_editing_row.update(res)
         if is_new: d["data"].append(self.current_editing_row)
 
-        self.lbl_status.configure(text=f"Файл: {os.path.basename(d['file_path'])} | Строк: {len(d['data'])}")
+        d["is_unsaved"] = True
+        self.update_status_bar()
         self.build_board()
         self.show_editor_placeholder()
         self.show_notification("Изменения применены", "#10b981")
@@ -551,10 +632,11 @@ class KanbanCSVApp(ctk.CTk):
             for i, row in enumerate(d["data"]):
                 if row is self.current_editing_row:
                     del d["data"][i]
+                    d["is_unsaved"] = True
+                    self.update_status_bar()
                     self.build_board()
                     self.show_editor_placeholder()
                     self.show_notification("Запись удалена", "#a83232")
-                    self.lbl_status.configure(text=f"Файл: {os.path.basename(d['file_path'])} | Строк: {len(d['data'])}")
                     return
             
             messagebox.showerror("Ошибка", "Запись не найдена.")
@@ -572,9 +654,24 @@ class KanbanCSVApp(ctk.CTk):
             title="Сохранить как..."
         )
         if not fp: return
-        d["file_path"] = fp
-        self.save_file()
-        self.on_tab_changed()
+        
+        enc, sep = d["enc"], d["sep"]
+        k_col, t_col = d["kanban_column"], d["text_column"]
+        headers = d["headers"]
+        data_copy = [dict(row) for row in d["data"]]
+        
+        try:
+            with open(fp, "w", encoding=enc, newline="") as f:
+                w = csv.DictWriter(f, fieldnames=headers, delimiter=sep)
+                w.writeheader()
+                w.writerows(data_copy)
+            self.show_notification("Новый файл сохранен!", "#10b981")
+        except Exception as e: 
+            messagebox.showerror("Ошибка", str(e))
+            return
+            
+        self.close_current_tab(force=True)
+        self.finalize_open(fp, headers, data_copy, sep, enc, kanban_col=k_col, text_col=t_col)
 
     def save_file(self):
         if not self.active_tab: return
@@ -585,6 +682,8 @@ class KanbanCSVApp(ctk.CTk):
                 w.writeheader()
                 w.writerows(d["data"])
             
+            d["is_unsaved"] = False
+            self.update_status_bar()
             self.show_notification("Файл успешно сохранен!", "#10b981")
         except PermissionError:
             messagebox.showerror("Ошибка доступа", f"Не удалось сохранить файл.\nВозможно, он открыт в другой программе.")

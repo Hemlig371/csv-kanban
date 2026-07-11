@@ -201,22 +201,65 @@ class KanbanCSVApp(ctk.CTk):
     def show_import_dialog(self, fp):
         win = ctk.CTkToplevel(self)
         win.title("Настройки импорта")
-        win.geometry("300x300")
+        win.geometry("600x480")
         win.grab_set()
 
-        ctk.CTkLabel(win, text="Кодировка:").pack(pady=(20, 5))
-        enc_entry = ctk.CTkEntry(win)
-        enc_entry.insert(0, "utf-8")
-        enc_entry.pack()
+        enc_var = tk.StringVar(value="utf-8")
+        sep_var = tk.StringVar(value=";")
 
-        ctk.CTkLabel(win, text="Разделитель:").pack(pady=(20, 5))
-        sep_entry = ctk.CTkEntry(win)
-        sep_entry.insert(0, ";")
-        sep_entry.pack()
+        top_frame = ctk.CTkFrame(win, fg_color="transparent")
+        top_frame.pack(pady=(20, 10), fill="x", padx=20)
+
+        ctk.CTkLabel(top_frame, text="Кодировка:", font=FONT_MAIN).pack(side="left", padx=(0, 5))
+        enc_entry = ctk.CTkEntry(top_frame, textvariable=enc_var, font=FONT_MAIN, width=120)
+        enc_entry.pack(side="left", padx=5)
+
+        ctk.CTkLabel(top_frame, text="Разделитель:", font=FONT_MAIN).pack(side="left", padx=(20, 5))
+        sep_entry = ctk.CTkEntry(top_frame, textvariable=sep_var, font=FONT_MAIN, width=50)
+        sep_entry.pack(side="left", padx=5)
+
+        ctk.CTkLabel(win, text="Предпросмотр данных (первые 5 строк):", font=FONT_MAIN).pack(anchor="w", padx=20, pady=(15, 5))
+        
+        preview_text = ctk.CTkTextbox(win, height=220, font=("Courier", 14), wrap="none")
+        preview_text.pack(fill="both", expand=True, padx=20, pady=5)
+
+        def update_preview(*args):
+            enc = enc_var.get()
+            sep = sep_var.get()
+            
+            preview_text.configure(state="normal")
+            preview_text.delete("1.0", "end")
+            
+            if len(sep) != 1:
+                preview_text.insert("1.0", "Разделитель должен состоять строго из 1 символа.")
+                preview_text.configure(state="disabled")
+                return
+
+            try:
+                with open(fp, "r", encoding=enc) as f:
+                    reader = csv.reader(f, delimiter=sep)
+                    lines = []
+                    for i, row in enumerate(reader):
+                        if i >= 5: break
+                        lines.append(" │ ".join(row))
+                    preview_text.insert("1.0", "\n".join(lines))
+            except Exception as e:
+                preview_text.insert("1.0", f"Ошибка чтения файла:\n{e}")
+            
+            preview_text.configure(state="disabled")
+
+        enc_var.trace_add("write", update_preview)
+        sep_var.trace_add("write", update_preview)
+        
+        update_preview()
 
         def run_import():
-            enc = enc_entry.get()
-            sep = sep_entry.get()
+            enc = enc_var.get()
+            sep = sep_var.get()
+            if len(sep) != 1:
+                messagebox.showerror("Ошибка", "Разделитель должен быть одним символом.")
+                return
+
             try:
                 data = []
                 with open(fp, "r", encoding=enc) as f:
@@ -233,7 +276,7 @@ class KanbanCSVApp(ctk.CTk):
             except Exception as e: 
                 messagebox.showerror("Ошибка", str(e))
 
-        ctk.CTkButton(win, text="ОК", command=run_import).pack(pady=30)
+        ctk.CTkButton(win, text="Импортировать", command=run_import, font=FONT_TEXT_BOLD, width=200, height=40).pack(pady=20)
 
     def finalize_open(self, fp, headers, data, sep, enc):
         title = os.path.basename(fp)

@@ -132,6 +132,23 @@ class KanbanCSVApp(ctk.CTk):
                     "Ошибка загрузки файла", 
                     f"Не удалось восстановить файл:\n{os.path.basename(fp)}\n\nОшибка: {file_error}"
                 )
+        if self.tabs_data:
+            self.after(200, self._force_render_tabs)
+                
+    def _force_render_tabs(self):
+            tabs = list(self.tabs_data.keys())
+            if not tabs: 
+                return
+                
+            self.tab_control.set(tabs[0])
+            self.update_idletasks()
+            
+            active_data = self.tabs_data[tabs[0]]
+            root_canvas = active_data.get("scroll_root")
+            if root_canvas:
+                root_canvas.configure(scrollregion=root_canvas.bbox("all"))
+                
+            self.on_tab_changed()
 
     def init_main_ui(self):
         self.top_bar = ctk.CTkFrame(self, fg_color=BG_PANEL, corner_radius=0, height=65)
@@ -507,6 +524,7 @@ class KanbanCSVApp(ctk.CTk):
             d["column_data_map"].setdefault(v, []).append(r)
         
         new_cnt = ctk.CTkFrame(d["scroll_root"], fg_color=BG_MAIN)
+        d["pagination_refs"] = {}
         
         keys = sorted(d["column_data_map"].keys())
         for i, v in enumerate(keys):
@@ -516,6 +534,18 @@ class KanbanCSVApp(ctk.CTk):
             f.pack_propagate(False)
             
             ctk.CTkLabel(f, text=f"{v.upper()} ({len(d['column_data_map'][v])})", font=FONT_HEADER, fg_color="transparent").pack(pady=10)
+            
+            pag_frame = ctk.CTkFrame(f, fg_color="transparent")
+            pag_frame.pack(side="bottom", fill="x", pady=5, padx=5)
+            
+            btn_prev = ctk.CTkButton(pag_frame, text="◄", width=35, command=lambda col=v: self.change_page(col, -1))
+            btn_prev.pack(side="left")
+            
+            lbl_page = ctk.CTkLabel(pag_frame, text="", font=FONT_CARD)
+            lbl_page.pack(side="left", expand=True)
+            
+            btn_next = ctk.CTkButton(pag_frame, text="►", width=35, command=lambda col=v: self.change_page(col, 1))
+            btn_next.pack(side="right")
             
             col_canvas = tk.Canvas(f, bg=BG_PANEL, highlightthickness=0)
             v_scroll = AutoHideScrollbar(f, orientation="vertical", command=col_canvas.yview)
@@ -530,13 +560,25 @@ class KanbanCSVApp(ctk.CTk):
             sf.bind("<Configure>", lambda e, cv=col_canvas: [cv.itemconfigure(cv.find_withtag("all")[0], width=cv.winfo_width()), cv.configure(scrollregion=cv.bbox("all"))])
             f.bind("<Configure>", lambda e, cv=col_canvas: cv.configure(scrollregion=cv.bbox("all")))
             
-            d["column_pages"][v] = PAGE_SIZE
+            current_page = d["column_pages"].get(v, 0)
+            max_page = max(0, (len(d["column_data_map"][v]) - 1) // PAGE_SIZE)
+            if current_page > max_page: 
+                current_page = max_page
+            d["column_pages"][v] = current_page
+            
+            d["pagination_refs"][v] = {
+                "sf": sf, 
+                "lbl": lbl_page, 
+                "btn_prev": btn_prev, 
+                "btn_next": btn_next,
+                "canvas": col_canvas
+            }
             
             scroll_cmd = self._create_scroll_cmd(col_canvas)
             col_canvas.bind("<Enter>", lambda e, cv=col_canvas, cmd=scroll_cmd: cv.bind_all("<MouseWheel>", cmd))
             col_canvas.bind("<Leave>", lambda e, cv=col_canvas: cv.unbind_all("<MouseWheel>"))
             
-            self.render_chunk(v, sf, 0, PAGE_SIZE)
+            self.render_page(v)
 
         old_cnt = d["container"]
         d["container"] = new_cnt
@@ -547,9 +589,26 @@ class KanbanCSVApp(ctk.CTk):
         
         new_cnt.bind("<Configure>", lambda e: d["scroll_root"].configure(scrollregion=d["scroll_root"].bbox("all")))
 
-    def render_chunk(self, v, sf, start, end):
+    def render_page(self, v):
         d = self.tabs_data[self.active_tab]
-        rows = d["column_data_map"][v][start:end]
+        page_idx = d["column_pages"][v]
+        refs = d["pagination_refs"][v]
+        sf = refs["sf"]
+        items = d["column_data_map"].get(v, [])
+        
+        total_pages = max(1, (len(items) + PAGE_SIZE - 1) // PAGE_SIZE)
+        
+        refs["lbl"].configure(text=f"Стр. {page_idx + 1} из {total_pages}")
+        refs["btn_prev"].configure(state="normal" if page_idx > 0 else "disabled")
+        refs["btn_next"].configure(state="normal" if page_idx < total_pages - 1 else "disabled")
+        
+        for w in sf.winfo_children(): 
+            w.destroy()
+            
+        start = page_idx * PAGE_SIZE
+        end = start + PAGE_SIZE
+        rows = items[start:end]
+        
         for r in rows:
             card = ctk.CTkFrame(sf, fg_color=BG_CARD, border_color=BORDER_COLOR, border_width=1, cursor="hand2")
             card.pack(fill="x", padx=8, pady=5)
@@ -559,6 +618,13 @@ class KanbanCSVApp(ctk.CTk):
             lbl.pack(fill="both", padx=10, pady=10)
             
             for w in [card, lbl]: w.bind("<Double-1>", lambda e, row_ref=r: self.load_editor(row_ref))
+            
+        refs["canvas"].yview_moveto(0)
+
+    def change_page(self, v, direction):
+        d = self.tabs_data[self.active_tab]
+        d["column_pages"][v] += direction
+        self.render_page(v)
 
     def show_editor_placeholder(self):
         for w in self.right_editor_frame.winfo_children(): w.destroy()

@@ -11,7 +11,7 @@ ctk.set_default_color_theme("blue")
 
 BG_MAIN = "#1e1e1e"
 BG_PANEL = "#252526"
-BG_CARD = "#808080"
+BG_CARD = "#4d4d4d"
 FG_TEXT = "#e1e1e1"
 BORDER_COLOR = "#3f3f46"
 PAGE_SIZE = 25
@@ -202,7 +202,21 @@ class KanbanCSVApp(ctk.CTk):
         if len(sys.argv) > 1:
             fp = sys.argv[1]
             if os.path.exists(fp):
-                self.show_import_dialog(fp)
+                enc = "utf-8"
+                sep = ","
+                
+                try:
+                    data = []
+                    with open(fp, "r", encoding=enc) as f:
+                        reader = csv.DictReader(f, delimiter=sep)
+                        headers = reader.fieldnames
+                        for row in reader:
+                            data.append(row)
+                    
+                    self.finalize_open(fp, headers, data, sep, enc)
+                except Exception as e:
+                    messagebox.showerror("Ошибка при автозагрузке", str(e))
+                    self.show_import_dialog(fp)
                 
     def open_file(self):
         fp = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")])
@@ -500,7 +514,8 @@ class KanbanCSVApp(ctk.CTk):
         if not res.get(d["kanban_column"]): return
         self.current_editing_row.update(res)
         if is_new: d["data"].append(self.current_editing_row)
-        
+
+        self.lbl_status.configure(text=f"Файл: {os.path.basename(d['file_path'])} | Строк: {len(d['data'])}")
         self.build_board()
         self.show_editor_placeholder()
         self.show_notification("Изменения применены", "#10b981")

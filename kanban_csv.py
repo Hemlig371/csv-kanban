@@ -205,22 +205,33 @@ class KanbanCSVApp(ctk.CTk):
         win.grab_set()
 
         ctk.CTkLabel(win, text="Кодировка:").pack(pady=(20, 5))
-        enc_entry = ctk.CTkEntry(win); enc_entry.insert(0, "utf-8"); enc_entry.pack()
+        enc_entry = ctk.CTkEntry(win)
+        enc_entry.insert(0, "utf-8")
+        enc_entry.pack()
 
         ctk.CTkLabel(win, text="Разделитель:").pack(pady=(20, 5))
-        sep_entry = ctk.CTkEntry(win); sep_entry.insert(0, ";"); sep_entry.pack()
+        sep_entry = ctk.CTkEntry(win)
+        sep_entry.insert(0, ";")
+        sep_entry.pack()
 
         def run_import():
             enc = enc_entry.get()
             sep = sep_entry.get()
             try:
+                data = []
                 with open(fp, "r", encoding=enc) as f:
                     reader = csv.DictReader(f, delimiter=sep)
-                    data = list(reader)
                     headers = reader.fieldnames
+                    for i, row in enumerate(reader):
+                        if i >= 10000:
+                            messagebox.showwarning("Ограничение загрузки", "Файл содержит более 10 000 строк")
+                            break
+                        data.append(row)
+                
                 self.finalize_open(fp, headers, data, sep, enc)
                 win.destroy()
-            except Exception as e: messagebox.showerror("Ошибка", str(e))
+            except Exception as e: 
+                messagebox.showerror("Ошибка", str(e))
 
         ctk.CTkButton(win, text="ОК", command=run_import).pack(pady=30)
 
@@ -269,7 +280,7 @@ class KanbanCSVApp(ctk.CTk):
     def close_current_tab(self):
         t = self.active_tab
         if not t: return
-        if messagebox.askyesno("Confirm", f"Close {t}?"):
+        if messagebox.askyesno("Подтверждение", f"Закрыть {t}?"):
             self.tab_control.delete(t)
             d = self.tabs_data.pop(t)
             d["container"].destroy()
@@ -280,7 +291,7 @@ class KanbanCSVApp(ctk.CTk):
     def setup_kanban_columns_dialog(self):
         d = self.tabs_data[self.active_tab]
         win = ctk.CTkToplevel(self)
-        win.title("Config")
+        win.title("Настройки")
         win.geometry("500x350")
         win.grab_set()
         
@@ -295,11 +306,14 @@ class KanbanCSVApp(ctk.CTk):
         def apply():
             d["kanban_column"] = c1.get()
             d["text_column"] = None if c2.get() == "[Нет]" else c2.get()
-            win.destroy(); self.build_board()
+            win.destroy()
+            self.build_board()
+            
         ctk.CTkButton(win, text="OK", command=apply, font=FONT_TEXT_BOLD).pack(pady=30)
 
     def build_board(self):
-        d = self.tabs_data[self.active_tab]; c = d["container"]
+        d = self.tabs_data[self.active_tab]
+        c = d["container"]
         for w in c.winfo_children(): w.destroy()
         
         d["column_data_map"] = {}
@@ -359,7 +373,8 @@ class KanbanCSVApp(ctk.CTk):
 
     def load_editor(self, row, is_new=False):
         for w in self.right_editor_frame.winfo_children(): w.destroy()
-        self.current_editing_row = row; d = self.tabs_data[self.active_tab]
+        self.current_editing_row = row
+        d = self.tabs_data[self.active_tab]
         
         ctk.CTkLabel(self.right_editor_frame, text="Запись", font=FONT_TITLE).pack(pady=10)
         
@@ -368,6 +383,9 @@ class KanbanCSVApp(ctk.CTk):
         
         ctk.CTkButton(bf, text="Отмена", command=self.show_editor_placeholder, width=130, height=40, font=FONT_MAIN).pack(side="right", padx=5)
         ctk.CTkButton(bf, text="Сохранить", command=lambda: self.save_edit(is_new), fg_color="#007acc", width=130, height=40, font=FONT_TEXT_BOLD).pack(side="right", padx=5)
+
+        if not is_new:
+            ctk.CTkButton(bf, text="Удалить", command=self.delete_current_record, fg_color="#a83232", hover_color="#822525", width=100, height=40, font=FONT_MAIN).pack(side="left", padx=5)
 
         editor_canvas = tk.Canvas(self.right_editor_frame, bg=BG_PANEL, highlightthickness=0)
         ed_scroll = AutoHideScrollbar(self.right_editor_frame, orientation="vertical", command=editor_canvas.yview)
@@ -415,7 +433,8 @@ class KanbanCSVApp(ctk.CTk):
             target_w.bind("<Button-3>", lambda event, tw=target_w: self.show_context_menu(event, tw))
 
     def save_edit(self, is_new):
-        d = self.tabs_data[self.active_tab]; res = {}
+        d = self.tabs_data[self.active_tab]
+        res = {}
         for h, w in self.editor_widgets.items():
             res[h] = w.get("1.0", "end-1c").strip() if isinstance(w, ctk.CTkTextbox) else w.get().strip()
         
@@ -427,6 +446,22 @@ class KanbanCSVApp(ctk.CTk):
         self.show_editor_placeholder()
         self.show_notification("Изменения применены", "#10b981")
 
+    def delete_current_record(self):
+        d = self.tabs_data.get(self.active_tab)
+        if not d or not self.current_editing_row: return
+        
+        if messagebox.askyesno("Удаление", "Удалить выбранную запись безвозвратно?"):
+            for i, row in enumerate(d["data"]):
+                if row is self.current_editing_row:
+                    del d["data"][i]
+                    self.build_board()
+                    self.show_editor_placeholder()
+                    self.show_notification("Запись удалена", "#a83232")
+                    self.lbl_status.configure(text=f"Файл: {os.path.basename(d['file_path'])} | Строк: {len(d['data'])}")
+                    return
+            
+            messagebox.showerror("Ошибка", "Запись не найдена.")
+
     def add_new_card(self):
         if self.active_tab: self.load_editor({h: "" for h in self.tabs_data[self.active_tab]["headers"]}, True)
 
@@ -436,7 +471,8 @@ class KanbanCSVApp(ctk.CTk):
         try:
             with open(d["file_path"], "w", encoding=d["enc"], newline="") as f:
                 w = csv.DictWriter(f, fieldnames=d["headers"], delimiter=d["sep"])
-                w.writeheader(); w.writerows(d["data"])
+                w.writeheader()
+                w.writerows(d["data"])
             
             self.show_notification("Файл успешно сохранен на диск!", "#10b981")
         except Exception as e: 

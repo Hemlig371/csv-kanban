@@ -5,7 +5,6 @@ import json
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
-import gc
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -66,7 +65,31 @@ class KanbanCSVApp(ctk.CTk):
         self.after(100, self.restore_session)
         
         self.bind_all("<Control-Key>", self.handle_global_shortcuts)
+        self.bind_all("<MouseWheel>", self._on_global_scroll)
         self.after(200, self.check_command_line_args)
+
+    def _on_global_scroll(self, event):
+        try:
+            w = self.winfo_containing(event.x_root, event.y_root)
+        except Exception:
+            return
+            
+        if not w: return
+        
+        if isinstance(w, tk.Text) or 'text' in str(type(w)).lower():
+            return
+            
+        while w:
+            if isinstance(w, tk.Canvas) and str(w.cget("yscrollcommand")):
+                low, high = w.yview()
+                if not (low <= 0.0 and high >= 1.0):
+                    if not (low <= 0.0 and event.delta > 0) and not (high >= 0.99 and event.delta < 0):
+                        w.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                        return
+            try:
+                w = w.master
+            except AttributeError:
+                break
 
     def center_toplevel(self, top, width, height):
         top.update_idletasks()
@@ -75,6 +98,12 @@ class KanbanCSVApp(ctk.CTk):
         top.geometry(f"{width}x{height}+{x}+{y}")
 
     def on_closing(self):
+        unsaved = [t for t, d in self.tabs_data.items() if d.get("is_unsaved")]
+        if unsaved:
+            msg = f"Есть несохраненные изменения в файлах:\n{', '.join(unsaved)}\n\nЗакрыть приложение?"
+            if not messagebox.askyesno("Подтверждение", msg):
+                return
+
         session_data = []
         for title, d in self.tabs_data.items():
             if os.path.exists(d["file_path"]):
@@ -98,7 +127,7 @@ class KanbanCSVApp(ctk.CTk):
         try:
             with open("session.json", "r", encoding="utf-8") as f:
                 session_data = json.load(f)
-        except Exception as e:
+        except Exception:
             return
             
         if not isinstance(session_data, list): return
@@ -133,19 +162,19 @@ class KanbanCSVApp(ctk.CTk):
             self.after(200, self._force_render_tabs)
                 
     def _force_render_tabs(self):
-            tabs = list(self.tabs_data.keys())
-            if not tabs: 
-                return
-                
-            self.tab_control.set(tabs[0])
-            self.update_idletasks()
+        tabs = list(self.tabs_data.keys())
+        if not tabs: 
+            return
             
-            active_data = self.tabs_data[tabs[0]]
-            root_canvas = active_data.get("scroll_root")
-            if root_canvas:
-                root_canvas.configure(scrollregion=root_canvas.bbox("all"))
-                
-            self.on_tab_changed()
+        self.tab_control.set(tabs[0])
+        self.update_idletasks()
+        
+        active_data = self.tabs_data[tabs[0]]
+        root_canvas = active_data.get("scroll_root")
+        if root_canvas:
+            root_canvas.configure(scrollregion=root_canvas.bbox("all"))
+            
+        self.on_tab_changed()
 
     def init_main_ui(self):
         self.top_bar = ctk.CTkFrame(self, fg_color=BG_PANEL, corner_radius=0, height=65)
@@ -514,22 +543,6 @@ class KanbanCSVApp(ctk.CTk):
         ctk.CTkButton(win, text="OK", command=apply, font=FONT_TEXT_BOLD).pack(pady=30)
         win.bind('<Return>', apply)
 
-    def _create_scroll_cmd(self, canvas):
-        def scroll(e):
-            low, high = canvas.yview()
-            if low <= 0.0 and high >= 1.0:
-                return
-            eps = 0.01 
-            
-            if low <= 0.0 and e.delta > 0:
-                return
-            if high >= (1.0 - eps) and e.delta < 0:
-                return
-                
-            canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
-            
-        return scroll
-
     def build_board(self):
         d = self.tabs_data[self.active_tab]
         
@@ -575,7 +588,7 @@ class KanbanCSVApp(ctk.CTk):
             def throttled_resize(e, cv=col_canvas, key=v):
                 if key in self._resize_timers:
                     self.after_cancel(self._resize_timers[key])
-                self._resize_timers[key] = self.after(100, lambda: cv.configure(scrollregion=cv.bbox("all")))
+                self._resize_timers[key] = self.after(50, lambda: cv.configure(scrollregion=cv.bbox("all")))
             
             sf.bind("<Configure>", throttled_resize)
             f.bind("<Configure>", lambda e, cv=col_canvas: cv.configure(scrollregion=cv.bbox("all")))
@@ -593,10 +606,6 @@ class KanbanCSVApp(ctk.CTk):
                 "btn_next": btn_next,
                 "canvas": col_canvas
             }
-            
-            scroll_cmd = self._create_scroll_cmd(col_canvas)
-            col_canvas.bind("<Enter>", lambda e: [col_canvas.focus_set(), col_canvas.bind("<MouseWheel>", scroll_cmd)])
-            col_canvas.bind("<Leave>", lambda e: col_canvas.unbind("<MouseWheel>"))
 
         for v in keys:
             self.render_page(v)
@@ -633,27 +642,25 @@ class KanbanCSVApp(ctk.CTk):
         rows = items[start:end]
         
         for r in rows:
-            card = ctk.CTkFrame(new_sf, fg_color=BG_CARD, border_color=BORDER_COLOR, border_width=1, cursor="hand2", width=320)
-            card.pack(padx=8, pady=5)
+            card = ctk.CTkFrame(new_sf, fg_color=BG_CARD, border_color=BORDER_COLOR, border_width=1, cursor="hand2", width=300, height=130)
+            card.pack_propagate(False)
+            card.pack(padx=5, pady=5)
             
             txt = "\n".join([f"• {h}: {str(r.get(h,''))[:40]}" for h in d["headers"][:4]])
-            lbl = ctk.CTkLabel(card, text=txt, font=FONT_CARD, justify="left", anchor="w", wraplength=320)
-            lbl.pack(fill="both", padx=10, pady=10)
+            lbl = ctk.CTkLabel(card, text=txt, font=FONT_CARD, justify="left", anchor="nw", wraplength=280)
+            lbl.pack(fill="both", expand=True, padx=10, pady=10)
             
             for w in [card, lbl]: w.bind("<Double-1>", lambda e, row_ref=r: self.load_editor(row_ref))
             
         def throttled_resize(e, cv=refs["canvas"], key=v):
             if key in self._resize_timers:
                 self.after_cancel(self._resize_timers[key])
-            self._resize_timers[key] = self.after(100, lambda: cv.configure(scrollregion=cv.bbox("all")))
+            self._resize_timers[key] = self.after(50, lambda: cv.configure(scrollregion=cv.bbox("all")))
             
         new_sf.bind("<Configure>", throttled_resize)
-        scroll_cmd = self._create_scroll_cmd(refs["canvas"])
-        new_sf.bind("<Enter>", lambda e, cv=refs["canvas"], cmd=scroll_cmd: [cv.focus_set(), cv.bind("<MouseWheel>", cmd)])
-        new_sf.bind("<Leave>", lambda e, cv=refs["canvas"]: cv.unbind("<MouseWheel>"))
 
         new_sf.update_idletasks()
-        w = new_sf.winfo_width()
+        w = new_sf.winfo_reqwidth()
         canvas_w = refs["canvas"].winfo_width()
         refs["canvas"].create_window((max(0, (canvas_w - w)//2), 0), window=new_sf, anchor="nw")
         refs["sf"] = new_sf
@@ -702,10 +709,6 @@ class KanbanCSVApp(ctk.CTk):
         editor_canvas.bind('<Configure>', lambda e, cv=editor_canvas, fid=canvas_frame_id: cv.itemconfigure(fid, width=e.width))
         sf.bind("<Configure>", lambda e, cv=editor_canvas: cv.configure(scrollregion=cv.bbox("all")))
         
-        scroll_cmd = self._create_scroll_cmd(editor_canvas)
-        editor_canvas.bind("<Enter>", lambda e, cv=editor_canvas, cmd=scroll_cmd: [cv.focus_set(), cv.bind("<MouseWheel>", cmd)])
-        editor_canvas.bind("<Leave>", lambda e, cv=editor_canvas: cv.unbind("<MouseWheel>"))
-        sf.bind("<Enter>", lambda e, cv=editor_canvas, cmd=scroll_cmd: [cv.focus_set(), cv.bind("<MouseWheel>", cmd)])
         self.editor_widgets = {}
         st_list = sorted(list(set(str(r.get(d["kanban_column"], "")).strip() for r in d["data"] if r.get(d["kanban_column"], ""))))
 

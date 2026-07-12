@@ -98,10 +98,6 @@ class KanbanCSVApp(ctk.CTk):
             with open("session.json", "r", encoding="utf-8") as f:
                 session_data = json.load(f)
         except Exception as e:
-            messagebox.showwarning(
-                "Восстановление сессии", 
-                f"Не удалось прочитать файл сессии (возможно, он поврежден).\nОшибка: {e}"
-            )
             return
             
         if not isinstance(session_data, list): return
@@ -290,13 +286,18 @@ class KanbanCSVApp(ctk.CTk):
                 w.icursor(tk.END)
 
     def show_context_menu(self, event, widget):
-        menu = tk.Menu(self, tearoff=0, bg=BG_PANEL, fg=FG_TEXT, selectcolor="#007acc")
-        menu.add_command(label="Вырезать", command=lambda: self.global_cut(widget))
-        menu.add_command(label="Копировать", command=lambda: self.global_copy(None))
-        menu.add_command(label="Вставить", command=lambda: self.global_paste(None))
-        menu.add_separator()
-        menu.add_command(label="Выделить всё", command=lambda: self.global_select_all(None))
-        menu.tk_popup(event.x_root, event.y_root)
+            widget.focus_set()
+        
+            if hasattr(self, "_active_menu"):
+                self._active_menu.destroy()
+                
+            self._active_menu = tk.Menu(self, tearoff=0, bg=BG_PANEL, fg=FG_TEXT, selectcolor="#007acc")
+            self._active_menu.add_command(label="Вырезать", command=lambda: self.global_cut(widget))
+            self._active_menu.add_command(label="Копировать", command=lambda: self.global_copy(None))
+            self._active_menu.add_command(label="Вставить", command=lambda: self.global_paste(None))
+            self._active_menu.add_separator()
+            self._active_menu.add_command(label="Выделить всё", command=lambda: self.global_select_all(None))
+            self._active_menu.tk_popup(event.x_root, event.y_root)
 
     def check_command_line_args(self):
         if len(sys.argv) > 1:
@@ -473,7 +474,6 @@ class KanbanCSVApp(ctk.CTk):
         d["container"].destroy()
         d["scroll_root"].destroy()
         del self.tabs_data[t]
-        gc.collect()
         self.on_tab_changed()
 
     def setup_kanban_columns_dialog(self):
@@ -513,7 +513,20 @@ class KanbanCSVApp(ctk.CTk):
         win.bind('<Return>', apply)
 
     def _create_scroll_cmd(self, canvas):
-        return lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+        def scroll(e):
+            low, high = canvas.yview()
+            if low <= 0.0 and high >= 1.0:
+                return
+            eps = 0.01 
+            
+            if low <= 0.0 and e.delta > 0:
+                return
+            if high >= (1.0 - eps) and e.delta < 0:
+                return
+                
+            canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+            
+        return scroll
 
     def build_board(self):
         d = self.tabs_data[self.active_tab]
@@ -575,11 +588,13 @@ class KanbanCSVApp(ctk.CTk):
             }
             
             scroll_cmd = self._create_scroll_cmd(col_canvas)
-            col_canvas.bind("<Enter>", lambda e, cv=col_canvas, cmd=scroll_cmd: cv.bind_all("<MouseWheel>", cmd))
-            col_canvas.bind("<Leave>", lambda e, cv=col_canvas: cv.unbind_all("<MouseWheel>"))
+            col_canvas.bind("<Enter>", lambda e, cv=col_canvas, cmd=scroll_cmd: [cv.focus_set(), cv.bind("<MouseWheel>", cmd)])
+            col_canvas.bind("<Leave>", lambda e, cv=col_canvas: cv.unbind("<MouseWheel>"))
             
             self.render_page(v)
-
+            
+        new_cnt.update_idletasks()
+        
         old_cnt = d["container"]
         d["container"] = new_cnt
         d["scroll_root"].create_window((0, 0), window=new_cnt, anchor="nw")
@@ -593,7 +608,8 @@ class KanbanCSVApp(ctk.CTk):
         d = self.tabs_data[self.active_tab]
         page_idx = d["column_pages"][v]
         refs = d["pagination_refs"][v]
-        sf = refs["sf"]
+        
+        old_sf = refs["sf"]
         items = d["column_data_map"].get(v, [])
         
         total_pages = max(1, (len(items) + PAGE_SIZE - 1) // PAGE_SIZE)
@@ -602,15 +618,14 @@ class KanbanCSVApp(ctk.CTk):
         refs["btn_prev"].configure(state="normal" if page_idx > 0 else "disabled")
         refs["btn_next"].configure(state="normal" if page_idx < total_pages - 1 else "disabled")
         
-        for w in sf.winfo_children(): 
-            w.destroy()
-            
+        new_sf = ctk.CTkFrame(refs["canvas"], fg_color=BG_PANEL, corner_radius=0)
+        
         start = page_idx * PAGE_SIZE
         end = start + PAGE_SIZE
         rows = items[start:end]
         
         for r in rows:
-            card = ctk.CTkFrame(sf, fg_color=BG_CARD, border_color=BORDER_COLOR, border_width=1, cursor="hand2")
+            card = ctk.CTkFrame(new_sf, fg_color=BG_CARD, border_color=BORDER_COLOR, border_width=1, cursor="hand2")
             card.pack(fill="x", padx=8, pady=5)
             
             txt = "\n".join([f"• {h}: {str(r.get(h,''))[:40]}" for h in d["headers"][:4]])
@@ -618,6 +633,18 @@ class KanbanCSVApp(ctk.CTk):
             lbl.pack(fill="both", padx=10, pady=10)
             
             for w in [card, lbl]: w.bind("<Double-1>", lambda e, row_ref=r: self.load_editor(row_ref))
+            
+        new_sf.bind("<Configure>", lambda e, cv=refs["canvas"]: [cv.itemconfigure(cv.find_withtag("all")[0], width=cv.winfo_width()), cv.configure(scrollregion=cv.bbox("all"))])
+        scroll_cmd = self._create_scroll_cmd(refs["canvas"])
+        new_sf.bind("<Enter>", lambda e, cv=refs["canvas"], cmd=scroll_cmd: [cv.focus_set(), cv.bind("<MouseWheel>", cmd)])
+        new_sf.bind("<Leave>", lambda e, cv=refs["canvas"]: cv.unbind("<MouseWheel>"))
+
+        new_sf.update_idletasks()
+        
+        refs["canvas"].create_window((0,0), window=new_sf, anchor="nw")
+        refs["sf"] = new_sf
+        
+        old_sf.destroy()
             
         refs["canvas"].yview_moveto(0)
 
@@ -661,10 +688,9 @@ class KanbanCSVApp(ctk.CTk):
         sf.bind("<Configure>", lambda e, cv=editor_canvas: cv.configure(scrollregion=cv.bbox("all")))
         
         scroll_cmd = self._create_scroll_cmd(editor_canvas)
-        editor_canvas.bind("<Enter>", lambda e, cv=editor_canvas, cmd=scroll_cmd: cv.bind_all("<MouseWheel>", cmd))
-        editor_canvas.bind("<Leave>", lambda e, cv=editor_canvas: cv.unbind_all("<MouseWheel>"))
-        sf.bind("<Enter>", lambda e, cv=editor_canvas, cmd=scroll_cmd: cv.bind_all("<MouseWheel>", cmd))
-        
+        editor_canvas.bind("<Enter>", lambda e, cv=editor_canvas, cmd=scroll_cmd: [cv.focus_set(), cv.bind("<MouseWheel>", cmd)])
+        editor_canvas.bind("<Leave>", lambda e, cv=editor_canvas: cv.unbind("<MouseWheel>"))
+        sf.bind("<Enter>", lambda e, cv=editor_canvas, cmd=scroll_cmd: [cv.focus_set(), cv.bind("<MouseWheel>", cmd)])
         self.editor_widgets = {}
         st_list = sorted(list(set(str(r.get(d["kanban_column"], "")).strip() for r in d["data"] if r.get(d["kanban_column"], ""))))
 

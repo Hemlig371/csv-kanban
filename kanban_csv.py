@@ -249,55 +249,56 @@ class KanbanCSVApp(ctk.CTk):
                 widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
         except: pass
 
-    def global_paste(self, event):
-        w = self.get_target_text_widget()
-        if w:
-            try:
-                text = self.clipboard_get()
-                if text:
-                    if isinstance(w, tk.Text) or 'text' in str(type(w)).lower():
-                        w.insert(tk.INSERT, text)
-                    else:
-                        try: w.delete(tk.SEL_FIRST, tk.SEL_LAST)
-                        except: pass
-                        w.insert(tk.INSERT, text)
-            except: pass
-
-    def global_copy(self, event):
-        w = self.get_target_text_widget()
-        if w:
-            try:
-                if isinstance(w, tk.Text) or 'text' in str(type(w)).lower():
-                    text = w.get("sel.first", "sel.last")
+    def global_paste(self, widget):
+        if not widget: return
+        try:
+            text = self.clipboard_get()
+            if text:
+                if isinstance(widget, tk.Text) or 'text' in str(type(widget)).lower():
+                    widget.insert(tk.INSERT, text)
                 else:
-                    text = w.selection_get() if hasattr(w, "selection_get") else w.get()
-                if text:
-                    self.clipboard_clear()
-                    self.clipboard_append(text)
-            except: pass
+                    try: widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
+                    except: pass
+                    widget.insert(tk.INSERT, text)
+        except: 
+            pass
 
-    def global_select_all(self, event):
-        w = self.get_target_text_widget()
-        if w:
-            if isinstance(w, tk.Text) or 'text' in str(type(w)).lower():
-                w.tag_add("sel", "1.0", "end")
-            elif hasattr(w, "select_range"):
-                w.select_range(0, tk.END)
-                w.icursor(tk.END)
+    def global_copy(self, widget):
+        if not widget: return
+        try:
+            if isinstance(widget, tk.Text) or 'text' in str(type(widget)).lower():
+                text = widget.get("sel.first", "sel.last")
+            else:
+                text = widget.selection_get()
+            
+            if text:
+                self.clipboard_clear()
+                self.clipboard_append(text)
+        except: 
+            pass
+
+    def global_select_all(self, widget):
+        if not widget: return
+        if isinstance(widget, tk.Text) or 'text' in str(type(widget)).lower():
+            widget.tag_add("sel", "1.0", "end")
+            widget.mark_set(tk.INSERT, "1.0")
+        elif hasattr(widget, "select_range"):
+            widget.select_range(0, tk.END)
+            widget.icursor(tk.END)
 
     def show_context_menu(self, event, widget):
-            widget.focus_set()
+        widget.focus_set()
         
-            if hasattr(self, "_active_menu"):
-                self._active_menu.destroy()
-                
-            self._active_menu = tk.Menu(self, tearoff=0, bg=BG_PANEL, fg=FG_TEXT, selectcolor="#007acc")
-            self._active_menu.add_command(label="Вырезать", command=lambda: self.global_cut(widget))
-            self._active_menu.add_command(label="Копировать", command=lambda: self.global_copy(None))
-            self._active_menu.add_command(label="Вставить", command=lambda: self.global_paste(None))
-            self._active_menu.add_separator()
-            self._active_menu.add_command(label="Выделить всё", command=lambda: self.global_select_all(None))
-            self._active_menu.tk_popup(event.x_root, event.y_root)
+        if hasattr(self, "_active_menu"):
+            self._active_menu.destroy()
+            
+        self._active_menu = tk.Menu(self, tearoff=0, bg=BG_PANEL, fg=FG_TEXT, selectcolor="#007acc")
+        self._active_menu.add_command(label="Вырезать", command=lambda: self.global_cut(widget))
+        self._active_menu.add_command(label="Копировать", command=lambda: self.global_copy(widget))
+        self._active_menu.add_command(label="Вставить", command=lambda: self.global_paste(widget))
+        self._active_menu.add_separator()
+        self._active_menu.add_command(label="Выделить всё", command=lambda: self.global_select_all(widget))
+        self._active_menu.tk_popup(event.x_root, event.y_root)
 
     def check_command_line_args(self):
         if len(sys.argv) > 1:
@@ -588,9 +589,10 @@ class KanbanCSVApp(ctk.CTk):
             }
             
             scroll_cmd = self._create_scroll_cmd(col_canvas)
-            col_canvas.bind("<Enter>", lambda e, cv=col_canvas, cmd=scroll_cmd: [cv.focus_set(), cv.bind("<MouseWheel>", cmd)])
-            col_canvas.bind("<Leave>", lambda e, cv=col_canvas: cv.unbind("<MouseWheel>"))
-            
+            col_canvas.bind("<Enter>", lambda e: [col_canvas.focus_set(), col_canvas.bind("<MouseWheel>", scroll_cmd)])
+            col_canvas.bind("<Leave>", lambda e: col_canvas.unbind("<MouseWheel>"))
+
+        for v in keys:
             self.render_page(v)
             
         new_cnt.update_idletasks()
@@ -644,7 +646,8 @@ class KanbanCSVApp(ctk.CTk):
         refs["canvas"].create_window((0,0), window=new_sf, anchor="nw")
         refs["sf"] = new_sf
         
-        old_sf.destroy()
+        if old_sf and old_sf.winfo_exists():
+            old_sf.destroy()
             
         refs["canvas"].yview_moveto(0)
 

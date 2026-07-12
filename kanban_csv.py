@@ -229,16 +229,16 @@ class KanbanCSVApp(ctk.CTk):
         if not w: return
 
         if key == 'v' or event.keycode == 86 or getattr(event, 'keysym_num', 0) == 244:
-            self.global_paste(None)
+            self.global_paste(w)
             return "break"
         elif key == 'c' or event.keycode == 67 or getattr(event, 'keysym_num', 0) == 241:
-            self.global_copy(None)
+            self.global_copy(w)
             return "break"
         elif key == 'x' or event.keycode == 88 or getattr(event, 'keysym_num', 0) == 231:
             self.global_cut(w)
             return "break"
         elif key == 'a' or event.keycode == 65 or getattr(event, 'keysym_num', 0) == 245:
-            self.global_select_all(None)
+            self.global_select_all(w)
             return "break"
 
     def global_cut(self, widget):
@@ -633,7 +633,7 @@ class KanbanCSVApp(ctk.CTk):
         rows = items[start:end]
         
         for r in rows:
-            card = ctk.CTkFrame(new_sf, fg_color=BG_CARD, border_color=BORDER_COLOR, border_width=1, cursor="hand2", width=310)
+            card = ctk.CTkFrame(new_sf, fg_color=BG_CARD, border_color=BORDER_COLOR, border_width=1, cursor="hand2", width=320)
             card.pack(padx=8, pady=5)
             
             txt = "\n".join([f"• {h}: {str(r.get(h,''))[:40]}" for h in d["headers"][:4]])
@@ -653,8 +653,9 @@ class KanbanCSVApp(ctk.CTk):
         new_sf.bind("<Leave>", lambda e, cv=refs["canvas"]: cv.unbind("<MouseWheel>"))
 
         new_sf.update_idletasks()
-        
-        refs["canvas"].create_window((0,0), window=new_sf, anchor="nw")
+        w = new_sf.winfo_width()
+        canvas_w = refs["canvas"].winfo_width()
+        refs["canvas"].create_window((max(0, (canvas_w - w)//2), 0), window=new_sf, anchor="nw")
         refs["sf"] = new_sf
         
         if old_sf and old_sf.winfo_exists():

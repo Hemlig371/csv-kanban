@@ -42,6 +42,7 @@ class KanbanCSVApp(ctk.CTk):
         super().__init__()
         self.title("CSV Kanban")
         self.configure(fg_color=BG_MAIN)
+        self._resize_timers = {}
 
         try:
             if os.path.exists("icon.ico"):
@@ -571,7 +572,12 @@ class KanbanCSVApp(ctk.CTk):
             sf = ctk.CTkFrame(col_canvas, fg_color=BG_PANEL, corner_radius=0)
             col_canvas.create_window((0,0), window=sf, anchor="nw")
             
-            sf.bind("<Configure>", lambda e, cv=col_canvas: [cv.itemconfigure(cv.find_withtag("all")[0], width=cv.winfo_width()), cv.configure(scrollregion=cv.bbox("all"))])
+            def throttled_resize(e, cv=col_canvas, key=v):
+                if key in self._resize_timers:
+                    self.after_cancel(self._resize_timers[key])
+                self._resize_timers[key] = self.after(100, lambda: cv.configure(scrollregion=cv.bbox("all")))
+            
+            sf.bind("<Configure>", throttled_resize)
             f.bind("<Configure>", lambda e, cv=col_canvas: cv.configure(scrollregion=cv.bbox("all")))
             
             current_page = d["column_pages"].get(v, 0)
@@ -620,15 +626,15 @@ class KanbanCSVApp(ctk.CTk):
         refs["btn_prev"].configure(state="normal" if page_idx > 0 else "disabled")
         refs["btn_next"].configure(state="normal" if page_idx < total_pages - 1 else "disabled")
         
-        new_sf = ctk.CTkFrame(refs["canvas"], fg_color=BG_PANEL, corner_radius=0)
+        new_sf = ctk.CTkFrame(refs["canvas"], fg_color=BG_PANEL, corner_radius=0, width=310)
         
         start = page_idx * PAGE_SIZE
         end = start + PAGE_SIZE
         rows = items[start:end]
         
         for r in rows:
-            card = ctk.CTkFrame(new_sf, fg_color=BG_CARD, border_color=BORDER_COLOR, border_width=1, cursor="hand2")
-            card.pack(fill="x", padx=8, pady=5)
+            card = ctk.CTkFrame(new_sf, fg_color=BG_CARD, border_color=BORDER_COLOR, border_width=1, cursor="hand2", width=310)
+            card.pack(padx=8, pady=5)
             
             txt = "\n".join([f"• {h}: {str(r.get(h,''))[:40]}" for h in d["headers"][:4]])
             lbl = ctk.CTkLabel(card, text=txt, font=FONT_CARD, justify="left", anchor="w", wraplength=320)
@@ -636,7 +642,12 @@ class KanbanCSVApp(ctk.CTk):
             
             for w in [card, lbl]: w.bind("<Double-1>", lambda e, row_ref=r: self.load_editor(row_ref))
             
-        new_sf.bind("<Configure>", lambda e, cv=refs["canvas"]: [cv.itemconfigure(cv.find_withtag("all")[0], width=cv.winfo_width()), cv.configure(scrollregion=cv.bbox("all"))])
+        def throttled_resize(e, cv=refs["canvas"], key=v):
+            if key in self._resize_timers:
+                self.after_cancel(self._resize_timers[key])
+            self._resize_timers[key] = self.after(100, lambda: cv.configure(scrollregion=cv.bbox("all")))
+            
+        new_sf.bind("<Configure>", throttled_resize)
         scroll_cmd = self._create_scroll_cmd(refs["canvas"])
         new_sf.bind("<Enter>", lambda e, cv=refs["canvas"], cmd=scroll_cmd: [cv.focus_set(), cv.bind("<MouseWheel>", cmd)])
         new_sf.bind("<Leave>", lambda e, cv=refs["canvas"]: cv.unbind("<MouseWheel>"))

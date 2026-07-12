@@ -5,6 +5,7 @@ import json
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
+import gc
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -23,7 +24,6 @@ FONT_MAIN = ("Arial", 16)
 FONT_CARD = ("Arial", 15)
 FONT_MUTED_ITALIC = ("Arial", 16, "italic")
 
-
 class AutoHideScrollbar(ctk.CTkScrollbar):
     def set(self, low, high):
         if float(low) <= 0.0 and float(high) >= 1.0:
@@ -34,7 +34,6 @@ class AutoHideScrollbar(ctk.CTkScrollbar):
             else:
                 self.pack(side="bottom", fill="x")
         super().set(low, high)
-
 
 class KanbanCSVApp(ctk.CTk):
     def __init__(self):
@@ -69,6 +68,10 @@ class KanbanCSVApp(ctk.CTk):
         self.after(200, self.check_command_line_args)
 
     def _on_global_scroll(self, event):
+        if not (self.winfo_rootx() <= event.x_root <= self.winfo_rootx() + self.winfo_width() and 
+                self.winfo_rooty() <= event.y_root <= self.winfo_rooty() + self.winfo_height()):
+            return
+
         try:
             w = self.winfo_containing(event.x_root, event.y_root)
         except Exception:
@@ -330,6 +333,46 @@ class KanbanCSVApp(ctk.CTk):
         self._active_menu.add_command(label="Выделить всё", command=lambda: self.global_select_all(widget))
         self._active_menu.tk_popup(event.x_root, event.y_root)
 
+    def show_card_context_menu(self, event, row_ref, current_col):
+        if hasattr(self, "_active_card_menu"):
+            self._active_card_menu.destroy()
+            
+        self._active_card_menu = tk.Menu(self, tearoff=0, bg=BG_PANEL, fg=FG_TEXT, selectcolor="#007acc")
+        
+        d = self.tabs_data[self.active_tab]
+        keys = sorted(d["column_data_map"].keys())
+        try:
+            col_idx = keys.index(current_col)
+        except ValueError:
+            col_idx = -1
+            
+        self._active_card_menu.add_command(label="Редактировать", command=lambda: self.load_editor(row_ref))
+        
+        if col_idx > 0:
+            self._active_card_menu.add_command(label="Переместить влево", command=lambda: self.move_card(row_ref, keys[col_idx - 1]))
+        if col_idx != -1 and col_idx < len(keys) - 1:
+            self._active_card_menu.add_command(label="Переместить вправо", command=lambda: self.move_card(row_ref, keys[col_idx + 1]))
+            
+        self._active_card_menu.add_separator()
+        self._active_card_menu.add_command(label="Создать", command=lambda: self.create_card_in_col(current_col))
+        self._active_card_menu.add_separator()
+        self._active_card_menu.add_command(label="Удалить", command=lambda: self.delete_specific_record(row_ref))
+        
+        self._active_card_menu.tk_popup(event.x_root, event.y_root)
+
+    def move_card(self, row_ref, new_col):
+        d = self.tabs_data[self.active_tab]
+        row_ref[d["kanban_column"]] = new_col
+        d["is_unsaved"] = True
+        self.update_status_bar()
+        self.build_board()
+
+    def create_card_in_col(self, col_val):
+        d = self.tabs_data[self.active_tab]
+        new_row = {h: "" for h in d["headers"]}
+        new_row[d["kanban_column"]] = col_val
+        self.load_editor(new_row, True)
+
     def check_command_line_args(self):
         if len(sys.argv) > 1:
             fp = sys.argv[1]
@@ -506,6 +549,7 @@ class KanbanCSVApp(ctk.CTk):
         d["scroll_root"].destroy()
         del self.tabs_data[t]
         self.on_tab_changed()
+        gc.collect()
 
     def setup_kanban_columns_dialog(self):
         d = self.tabs_data[self.active_tab]
@@ -588,10 +632,10 @@ class KanbanCSVApp(ctk.CTk):
             def throttled_resize(e, cv=col_canvas, key=v):
                 if key in self._resize_timers:
                     self.after_cancel(self._resize_timers[key])
-                self._resize_timers[key] = self.after(50, lambda: cv.configure(scrollregion=cv.bbox("all")))
+                self._resize_timers[key] = self.after(50, lambda: cv.winfo_exists() and cv.configure(scrollregion=cv.bbox("all")))
             
             sf.bind("<Configure>", throttled_resize)
-            f.bind("<Configure>", lambda e, cv=col_canvas: cv.configure(scrollregion=cv.bbox("all")))
+            f.bind("<Configure>", lambda e, cv=col_canvas: cv.winfo_exists() and cv.configure(scrollregion=cv.bbox("all")))
             
             current_page = d["column_pages"].get(v, 0)
             max_page = max(0, (len(d["column_data_map"][v]) - 1) // PAGE_SIZE)
@@ -607,10 +651,19 @@ class KanbanCSVApp(ctk.CTk):
                 "canvas": col_canvas
             }
 
-        for v in keys:
-            self.render_page(v)
-            
-        new_cnt.update_idletasks()
+        target_tab = self.active_tab
+
+        def render_step(idx):
+            if target_tab not in self.tabs_data or not new_cnt.winfo_exists():
+                return
+                
+            if idx < len(keys):
+                self.render_page(keys[idx])
+                self.after(5, render_step, idx + 1)
+            else:
+                new_cnt.update_idletasks()
+
+        render_step(0)
         
         old_cnt = d["container"]
         d["container"] = new_cnt
@@ -618,6 +671,7 @@ class KanbanCSVApp(ctk.CTk):
         
         if old_cnt:
             old_cnt.destroy()
+            gc.collect()
         
         new_cnt.bind("<Configure>", lambda e: d["scroll_root"].configure(scrollregion=d["scroll_root"].bbox("all")))
 
@@ -641,21 +695,25 @@ class KanbanCSVApp(ctk.CTk):
         end = start + PAGE_SIZE
         rows = items[start:end]
         
+        display_headers = d["headers"][:4]
+        
         for r in rows:
             card = ctk.CTkFrame(new_sf, fg_color=BG_CARD, border_color=BORDER_COLOR, border_width=1, cursor="hand2", width=300, height=130)
             card.pack_propagate(False)
             card.pack(padx=5, pady=5)
             
-            txt = "\n".join([f"• {h}: {str(r.get(h,''))[:40]}" for h in d["headers"][:4]])
+            txt = "\n".join([f"• {h}: {str(r.get(h,''))[:40]}" for h in display_headers])
             lbl = ctk.CTkLabel(card, text=txt, font=FONT_CARD, justify="left", anchor="nw", wraplength=280)
             lbl.pack(fill="both", expand=True, padx=10, pady=10)
             
-            for w in [card, lbl]: w.bind("<Double-1>", lambda e, row_ref=r: self.load_editor(row_ref))
+            for w in [card, lbl]: 
+                w.bind("<Double-1>", lambda e, row_ref=r: self.load_editor(row_ref))
+                w.bind("<Button-3>", lambda e, row_ref=r, current_col=v: self.show_card_context_menu(e, row_ref, current_col))
             
-        def throttled_resize(e, cv=refs["canvas"], key=v):
+        def throttled_resize(e, cv=refs["canvas"], key=f"{v}_page"):
             if key in self._resize_timers:
                 self.after_cancel(self._resize_timers[key])
-            self._resize_timers[key] = self.after(50, lambda: cv.configure(scrollregion=cv.bbox("all")))
+            self._resize_timers[key] = self.after(50, lambda: cv.winfo_exists() and cv.configure(scrollregion=cv.bbox("all")))
             
         new_sf.bind("<Configure>", throttled_resize)
 
@@ -707,7 +765,7 @@ class KanbanCSVApp(ctk.CTk):
         canvas_frame_id = editor_canvas.create_window((0,0), window=sf, anchor="nw")
         
         editor_canvas.bind('<Configure>', lambda e, cv=editor_canvas, fid=canvas_frame_id: cv.itemconfigure(fid, width=e.width))
-        sf.bind("<Configure>", lambda e, cv=editor_canvas: cv.configure(scrollregion=cv.bbox("all")))
+        sf.bind("<Configure>", lambda e, cv=editor_canvas: cv.winfo_exists() and cv.configure(scrollregion=cv.bbox("all")))
         
         self.editor_widgets = {}
         st_list = sorted(list(set(str(r.get(d["kanban_column"], "")).strip() for r in d["data"] if r.get(d["kanban_column"], ""))))
@@ -719,7 +777,8 @@ class KanbanCSVApp(ctk.CTk):
             
             if h == d["kanban_column"]:
                 w = ctk.CTkComboBox(f, values=[""] + st_list, font=FONT_MAIN, height=40)
-                w.set(" " if is_new else str(row.get(h, "")))
+                val = str(row.get(h, ""))
+                w.set(val if val else (" " if is_new else ""))
                 target_w = w._entry
             elif h == d["text_column"]:
                 w = ctk.CTkTextbox(f, font=FONT_MAIN, height=180, border_width=1)
@@ -750,22 +809,26 @@ class KanbanCSVApp(ctk.CTk):
         self.show_editor_placeholder()
         self.show_notification("Изменения применены", "#10b981")
 
-    def delete_current_record(self):
+    def delete_specific_record(self, row_ref):
         d = self.tabs_data.get(self.active_tab)
-        if not d or not self.current_editing_row: return
+        if not d or not row_ref: return
         
         if messagebox.askyesno("Удаление", "Удалить выбранную запись безвозвратно?"):
             for i, row in enumerate(d["data"]):
-                if row is self.current_editing_row:
+                if row is row_ref:
                     del d["data"][i]
                     d["is_unsaved"] = True
                     self.update_status_bar()
                     self.build_board()
-                    self.show_editor_placeholder()
+                    if getattr(self, "current_editing_row", None) is row_ref:
+                        self.show_editor_placeholder()
                     self.show_notification("Запись удалена", "#a83232")
                     return
             
             messagebox.showerror("Ошибка", "Запись не найдена.")
+
+    def delete_current_record(self):
+        self.delete_specific_record(self.current_editing_row)
 
     def add_new_card(self):
         if self.active_tab: self.load_editor({h: "" for h in self.tabs_data[self.active_tab]["headers"]}, True)

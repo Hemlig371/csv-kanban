@@ -377,6 +377,10 @@ class KanbanCSVApp(ctk.CTk):
         if len(sys.argv) > 1:
             fp = sys.argv[1]
             if os.path.exists(fp):
+                for t, d in self.tabs_data.items():
+                    if os.path.abspath(d["file_path"]) == os.path.abspath(fp):
+                        return
+                        
                 enc = "utf-8"
                 sep = ","
                 
@@ -396,6 +400,13 @@ class KanbanCSVApp(ctk.CTk):
     def open_file(self):
         fp = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")])
         if not fp: return
+        
+        for t, d in self.tabs_data.items():
+            if os.path.abspath(d["file_path"]) == os.path.abspath(fp):
+                messagebox.showinfo("Файл открыт", "Этот файл уже открыт в другой вкладке.")
+                self.tab_control.set(t)
+                return
+                
         self.show_import_dialog(fp)
 
     def show_import_dialog(self, fp):
@@ -799,7 +810,10 @@ class KanbanCSVApp(ctk.CTk):
         for h, w in self.editor_widgets.items():
             res[h] = w.get("1.0", "end-1c").strip() if isinstance(w, ctk.CTkTextbox) else w.get().strip()
         
-        if not res.get(d["kanban_column"]): return
+        if not res.get(d["kanban_column"]):
+            messagebox.showwarning("Внимание", f"Поле группировки '{d['kanban_column']}' не может быть пустым.")
+            return
+            
         self.current_editing_row.update(res)
         if is_new: d["data"].append(self.current_editing_row)
 

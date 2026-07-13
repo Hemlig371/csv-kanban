@@ -186,7 +186,8 @@ class KanbanCSVApp(ctk.CTk):
         new_width = window_right_edge - x_root - 10 
         
         if 300 <= new_width <= (self.winfo_width() - 400):
-            self.right_editor_frame.configure(width=new_width)
+            if abs(self.right_editor_frame.winfo_width() - new_width) > 2:
+                self.right_editor_frame.configure(width=new_width)
 
     def init_main_ui(self):
         self.top_bar = ctk.CTkFrame(self, fg_color=BG_PANEL, corner_radius=0, height=65)

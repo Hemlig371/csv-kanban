@@ -782,18 +782,8 @@ class KanbanCSVApp(ctk.CTk):
         if not is_new:
             ctk.CTkButton(bf, text="Удалить", command=self.delete_current_record, fg_color="#a83232", hover_color="#822525", width=100, height=40, font=FONT_MAIN).pack(side="left", padx=5)
 
-        editor_canvas = tk.Canvas(self.right_editor_frame, bg=BG_PANEL, highlightthickness=0)
-        ed_scroll = AutoHideScrollbar(self.right_editor_frame, orientation="vertical", command=editor_canvas.yview)
-        editor_canvas.configure(yscrollcommand=ed_scroll.set)
-        
-        ed_scroll.pack(side="right", fill="y")
-        editor_canvas.pack(side="left", fill="both", expand=True)
-        
-        sf = ctk.CTkFrame(editor_canvas, fg_color=BG_PANEL)
-        canvas_frame_id = editor_canvas.create_window((0,0), window=sf, anchor="nw")
-        
-        editor_canvas.bind('<Configure>', lambda e, cv=editor_canvas, fid=canvas_frame_id: cv.itemconfigure(fid, width=e.width))
-        sf.bind("<Configure>", lambda e, cv=editor_canvas: cv.winfo_exists() and cv.configure(scrollregion=cv.bbox("all")))
+        sf = ctk.CTkScrollableFrame(self.right_editor_frame, fg_color=BG_PANEL, corner_radius=0)
+        sf.pack(fill="both", expand=True)
         
         self.editor_widgets = {}
         st_list = sorted(list(set(str(r.get(d["kanban_column"], "")).strip() for r in d["data"] if r.get(d["kanban_column"], ""))))

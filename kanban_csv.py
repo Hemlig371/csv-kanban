@@ -179,6 +179,15 @@ class KanbanCSVApp(ctk.CTk):
             
         self.on_tab_changed()
 
+    def _resize_editor_panel(self, event):
+        x_root = event.x_root
+        window_right_edge = self.winfo_rootx() + self.winfo_width()
+        
+        new_width = window_right_edge - x_root - 10 
+        
+        if 300 <= new_width <= (self.winfo_width() - 400):
+            self.right_editor_frame.configure(width=new_width)
+
     def init_main_ui(self):
         self.top_bar = ctk.CTkFrame(self, fg_color=BG_PANEL, corner_radius=0, height=65)
         self.top_bar.pack(fill="x", side="top")
@@ -208,8 +217,12 @@ class KanbanCSVApp(ctk.CTk):
         self.work_area.pack(fill="both", expand=True, padx=5, pady=5)
 
         self.right_editor_frame = ctk.CTkFrame(self.work_area, fg_color=BG_PANEL, width=440, border_color=BORDER_COLOR, border_width=1, corner_radius=8)
-        self.right_editor_frame.pack(side="right", fill="y", padx=5, pady=5)
+        self.right_editor_frame.pack(side="right", fill="y", padx=(0, 5), pady=5)
         self.right_editor_frame.pack_propagate(False)
+
+        self.resizer = ctk.CTkFrame(self.work_area, width=5, fg_color=BORDER_COLOR, cursor="sb_h_double_arrow")
+        self.resizer.pack(side="right", fill="y", pady=5, padx=2)
+        self.resizer.bind("<B1-Motion>", self._resize_editor_panel)
 
         self.left_frame = ctk.CTkFrame(self.work_area, fg_color=BG_MAIN, corner_radius=0)
         self.left_frame.pack(side="left", fill="both", expand=True)
@@ -257,19 +270,22 @@ class KanbanCSVApp(ctk.CTk):
             self.save_file()
             return "break"
         
+        if key in ('v', 'c', 'x', 'a'):
+            return 
+            
         w = self.get_target_text_widget()
         if not w: return
 
-        if key == 'v' or event.keycode == 86 or getattr(event, 'keysym_num', 0) == 244:
+        if event.keycode == 86 or getattr(event, 'keysym_num', 0) == 244 or key == 'м':
             self.global_paste(w)
             return "break"
-        elif key == 'c' or event.keycode == 67 or getattr(event, 'keysym_num', 0) == 241:
+        elif event.keycode == 67 or getattr(event, 'keysym_num', 0) == 241 or key == 'с':
             self.global_copy(w)
             return "break"
-        elif key == 'x' or event.keycode == 88 or getattr(event, 'keysym_num', 0) == 231:
+        elif event.keycode == 88 or getattr(event, 'keysym_num', 0) == 231 or key == 'ч':
             self.global_cut(w)
             return "break"
-        elif key == 'a' or event.keycode == 65 or getattr(event, 'keysym_num', 0) == 245:
+        elif event.keycode == 65 or getattr(event, 'keysym_num', 0) == 245 or key == 'ф':
             self.global_select_all(w)
             return "break"
 
@@ -803,6 +819,22 @@ class KanbanCSVApp(ctk.CTk):
             w.pack(fill="x", pady=2, padx=(0, 5))
             self.editor_widgets[h] = w
             target_w.bind("<Button-3>", lambda event, tw=target_w: self.show_context_menu(event, tw))
+
+            if h == d["text_column"]:
+                v_resizer = ctk.CTkFrame(f, height=5, fg_color=BORDER_COLOR, cursor="sb_v_double_arrow")
+                v_resizer.pack(fill="x", padx=(0, 5), pady=(0, 2))
+
+                def on_press(e, tb=w):
+                    tb._start_y = e.y_root
+                    tb._start_h = tb.winfo_height()
+
+                def on_drag(e, tb=w):
+                    new_h = tb._start_h + (e.y_root - tb._start_y)
+                    if new_h >= 100:
+                        tb.configure(height=new_h)
+
+                v_resizer.bind("<ButtonPress-1>", on_press)
+                v_resizer.bind("<B1-Motion>", on_drag)
 
     def save_edit(self, is_new):
         d = self.tabs_data[self.active_tab]
